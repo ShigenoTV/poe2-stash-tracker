@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { fromDivine, type Currency, type Rates } from "./currency";
 import type { Snapshot } from "./types";
 
 export interface HistoryPoint {
@@ -7,6 +8,15 @@ export interface HistoryPoint {
   league: string;
   divine: number;
   exalted: number;
+  /** Absent des points enregistrés avant l'affichage en Chaos. */
+  chaos?: number;
+}
+
+/** Valeur d'un point dans la devise affichée, au taux de l'époque quand il est connu. */
+export function pointValue(p: HistoryPoint, currency: Currency, rates: Rates): number {
+  if (currency === "exalted") return p.exalted;
+  if (currency === "chaos" && p.chaos !== undefined) return p.chaos;
+  return fromDivine(p.divine, currency, rates);
 }
 
 export async function loadHistory(): Promise<HistoryPoint[]> {
@@ -16,11 +26,13 @@ export async function loadHistory(): Promise<HistoryPoint[]> {
 /** Enregistre la valeur d'un snapshot ; renvoie l'historique à jour. */
 export function recordSnapshot(snapshot: Snapshot): Promise<HistoryPoint[]> {
   const exalted = snapshot.items.reduce((sum, i) => sum + (i.unitExalted ?? 0) * i.quantity, 0);
+  const divine = exalted / snapshot.exaltedPerDivine;
   const point: HistoryPoint = {
     at: Date.parse(snapshot.takenAt),
     league: snapshot.league,
-    divine: exalted / snapshot.exaltedPerDivine,
+    divine,
     exalted,
+    ...(snapshot.chaosPerDivine ? { chaos: divine * snapshot.chaosPerDivine } : {}),
   };
   return invoke<HistoryPoint[]>("record_history", { point });
 }

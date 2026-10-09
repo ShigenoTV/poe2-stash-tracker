@@ -1,31 +1,35 @@
-import { compactQuantity, formatValue } from "../lib/format";
+import { formatMoney, fromExalted, type Currency, type Rates } from "../lib/currency";
 import type { SnapshotItem } from "../lib/types";
 
-export function ItemGrid({ items }: { items: SnapshotItem[] }) {
+interface Props {
+  items: SnapshotItem[];
+  currency: Currency;
+  rates: Rates;
+}
+
+/** Liste des objets, du plus précieux au moins précieux, valeur totale alignée à droite. */
+export function ItemGrid({ items, currency, rates }: Props) {
   if (items.length === 0) {
     return <p className="empty">Aucun objet dans cette catégorie.</p>;
   }
+  const money = (exalted: number) => formatMoney(fromExalted(exalted, currency, rates), currency);
   return (
-    <ul className="item-grid">
+    <ul className="item-list">
       {items.map((item) => {
         const total = item.unitExalted === null ? null : item.unitExalted * item.quantity;
-        const tooltip =
-          total === null
-            ? `${item.name} × ${item.quantity} · sans prix`
-            : `${item.name} × ${item.quantity} · ${formatValue(item.unitExalted!)} ex/u · ${formatValue(total)} ex`;
         return (
-          <li key={item.id} className="item-tile" title={tooltip}>
-            {item.icon ? (
-              <img src={item.icon} alt="" className="item-icon" />
-            ) : (
-              <span className="item-name">{item.name}</span>
-            )}
-            {/* Une icône capturée en jeu porte déjà sa quantité. */}
-            {!item.icon?.startsWith("data:") && <span className="item-qty">{compactQuantity(item.quantity)}</span>}
-            {total === null && <span className="item-unpriced" aria-label="sans prix">?</span>}
+          <li key={item.id} className="item-row">
+            <span className="item-row-icon">{item.icon && <img src={item.icon} alt="" />}</span>
+            <span className="item-row-name">{item.name}</span>
+            <span className="item-row-qty">× {item.quantity.toLocaleString("fr-FR")}</span>
+            <span className="item-row-unit muted">{item.unitExalted === null ? "" : `${money(item.unitExalted)} / u`}</span>
+            <span className={`item-row-total${total === null ? " muted" : ""}`}>
+              {total === null ? "sans prix" : money(total)}
+            </span>
           </li>
         );
       })}
     </ul>
   );
 }
+

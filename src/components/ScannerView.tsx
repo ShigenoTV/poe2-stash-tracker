@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type PointerEvent } from "react";
 import type { StashScanner } from "../lib/useStashScanner";
-import { compactQuantity, formatValue } from "../lib/format";
+import { formatMoney, fromDivine, usable, type Currency } from "../lib/currency";
+import { compactQuantity } from "../lib/format";
 import { SlotEditor } from "./SlotEditor";
 import { chosenItem, type Region } from "../lib/scanner";
 
 const METHOD_LABEL = { wgc: "GPU (Windows Graphics Capture)", gdi: "GDI (repli)" };
 
-export function ScannerView({ scanner }: { scanner: StashScanner }) {
+export function ScannerView({ scanner, currency: chosen }: { scanner: StashScanner; currency: Currency }) {
   const { preview, region, result, tabs, prices, auto, busy, error, lastAutoScan } = scanner;
   const [draft, setDraft] = useState<Region | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
@@ -43,7 +44,9 @@ export function ScannerView({ scanner }: { scanner: StashScanner }) {
 
   const read = result?.slots.filter((s) => s.quantity !== null).length ?? 0;
   const byId = useMemo(() => new Map((prices?.items ?? []).map((i) => [i.id, i])), [prices]);
-  const exaltedPerDivine = prices?.rates.exalted ?? null;
+  const rates = { exaltedPerDivine: prices?.rates.exalted ?? 1, chaosPerDivine: prices?.rates.chaos ?? null };
+  const currency = usable(chosen, rates);
+  const money = (divine: number) => formatMoney(fromDivine(divine, currency, rates), currency);
 
   const valued = (result?.slots ?? []).map((slot) => {
     const chosen = chosenItem(slot);
@@ -123,8 +126,7 @@ export function ScannerView({ scanner }: { scanner: StashScanner }) {
             {prices && (
               <>
                 {" · "}
-                <span className="networth-inline">{formatValue(totalDivine)} div</span>
-                {exaltedPerDivine && <span className="muted"> ({formatValue(totalDivine * exaltedPerDivine)} ex)</span>}
+                <span className="networth-inline">{money(totalDivine)}</span>
               </>
             )}
           </h2>
@@ -141,7 +143,7 @@ export function ScannerView({ scanner }: { scanner: StashScanner }) {
               const title = [
                 item?.name ?? "Objet inconnu",
                 slot.quantity === null ? "quantité illisible" : `× ${slot.quantity}`,
-                total !== null ? `${formatValue(total)} div` : null,
+                total !== null ? money(total) : null,
                 status === "guessed" ? "suggestion à confirmer" : null,
               ]
                 .filter(Boolean)

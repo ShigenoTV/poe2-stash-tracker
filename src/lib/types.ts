@@ -72,5 +72,7 @@ export interface Snapshot {
   league: string;
   /** Combien d'Exalted vaut 1 Divine au moment du snapshot. */
   exaltedPerDivine: number;
+  /** Combien de Chaos vaut 1 Divine (absent des snapshots plus anciens). */
+  chaosPerDivine?: number;
   items: SnapshotItem[];
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CurrencySelect } from "./components/CurrencySelect";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
 import { ItemGrid } from "./components/ItemGrid";
 import { NetWorthChart } from "./components/NetWorthChart";
@@ -9,6 +10,7 @@ import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
 import { useStashScanner } from "./lib/useStashScanner";
 import { loadSnapshot, saveSnapshot } from "./lib/snapshot";
+import { loadCurrency, saveCurrency, usable, type Currency, type Rates } from "./lib/currency";
 import { CATEGORIES, type Category, type Snapshot } from "./lib/types";
 import "./styles.css";
 
@@ -27,6 +29,21 @@ export default function App() {
   const updater = useUpdater();
   const scanner = useStashScanner(onSnapshot);
   const [view, setView] = useState<"snapshot" | "scanner">("snapshot");
+  const [chosenCurrency, setChosenCurrency] = useState<Currency>(loadCurrency);
+  const pickCurrency = useCallback((c: Currency) => {
+    setChosenCurrency(c);
+    saveCurrency(c);
+  }, []);
+
+  // Taux du snapshot affiché ; le fichier de prix chargé complète un ancien snapshot sans taux Chaos.
+  const rates: Rates = useMemo(
+    () => ({
+      exaltedPerDivine: snapshot?.exaltedPerDivine ?? scanner.prices?.rates.exalted ?? 1,
+      chaosPerDivine: snapshot?.chaosPerDivine ?? scanner.prices?.rates.chaos ?? null,
+    }),
+    [snapshot, scanner.prices],
+  );
+  const currency = usable(chosenCurrency, rates);
 
   const totals = useMemo(() => {
     const t = Object.fromEntries(CATEGORIES.map((c) => [c, 0])) as Record<Category, number>;
@@ -57,10 +74,11 @@ export default function App() {
           Scanner
         </button>
         <UpdateCheck updater={updater} />
+        <CurrencySelect value={currency} onChange={pickCurrency} chaosAvailable={!!rates.chaosPerDivine} />
       </nav>
       {view === "scanner" ? (
         <main className="content">
-          <ScannerView scanner={scanner} />
+          <ScannerView scanner={scanner} currency={chosenCurrency} />
         </main>
       ) : !snapshot ? (
         <main className="content empty-state">
@@ -71,12 +89,12 @@ export default function App() {
         </main>
       ) : (
         <>
-          <SnapshotHeader snapshot={snapshot} totalExalted={totalExalted} />
+          <SnapshotHeader snapshot={snapshot} totalExalted={totalExalted} currency={currency} rates={rates} />
           <div className="body">
-            <CategorySidebar selected={filter} totals={totals} onSelect={setFilter} />
+            <CategorySidebar selected={filter} totals={totals} onSelect={setFilter} currency={currency} rates={rates} />
             <main className="content">
-              <NetWorthChart history={history} league={snapshot.league} />
-              <ItemGrid items={visible} />
+              <NetWorthChart history={history} league={snapshot.league} currency={currency} rates={rates} />
+              <ItemGrid items={visible} currency={currency} rates={rates} />
             </main>
           </div>
         </>

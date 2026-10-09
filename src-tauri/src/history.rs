@@ -15,6 +15,9 @@ pub struct HistoryPoint {
     pub league: String,
     pub divine: f64,
     pub exalted: f64,
+    /// Absent des points enregistrés avant l'affichage en Chaos.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chaos: Option<f64>,
 }
 
 #[derive(Default)]
@@ -75,7 +78,7 @@ mod tests {
     use super::*;
 
     fn p(at: i64, league: &str, divine: f64) -> HistoryPoint {
-        HistoryPoint { at, league: league.into(), divine, exalted: divine * 400.0 }
+        HistoryPoint { at, league: league.into(), divine, exalted: divine * 400.0, chaos: None }
     }
 
     #[test]

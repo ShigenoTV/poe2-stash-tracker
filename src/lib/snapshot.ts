@@ -45,6 +45,7 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
     takenAt: takenAt.toISOString(),
     league: prices.league,
     exaltedPerDivine,
+    ...(prices.rates.chaos ? { chaosPerDivine: prices.rates.chaos } : {}),
     items: [...items.values()],
   };
 }

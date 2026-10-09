@@ -1,4 +1,4 @@
-import { formatValue } from "../lib/format";
+import { formatMoney, fromExalted, type Currency, type Rates } from "../lib/currency";
 import { CATEGORIES, CATEGORY_LABEL, type Category } from "../lib/types";
 
 export type CategoryFilter = Category | "All";
@@ -7,9 +7,11 @@ interface Props {
   selected: CategoryFilter;
   totals: Record<Category, number>;
   onSelect: (c: CategoryFilter) => void;
+  currency: Currency;
+  rates: Rates;
 }
 
-export function CategorySidebar({ selected, totals, onSelect }: Props) {
+export function CategorySidebar({ selected, totals, onSelect, currency, rates }: Props) {
   const entries: { key: CategoryFilter; label: string; value: number }[] = [
     { key: "All", label: "Tout", value: Object.values(totals).reduce((a, b) => a + b, 0) },
     // « Autres » n'apparaît que s'il contient quelque chose.
@@ -30,7 +32,7 @@ export function CategorySidebar({ selected, totals, onSelect }: Props) {
         >
           <span className={`dot cat-${e.key.toLowerCase()}`} />
           <span className="sidebar-label">{e.label}</span>
-          <span className="sidebar-value">{formatValue(e.value)} ex</span>
+          <span className="sidebar-value">{formatMoney(fromExalted(e.value, currency, rates), currency)}</span>
         </button>
       ))}
     </nav>

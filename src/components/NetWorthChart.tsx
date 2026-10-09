@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { formatValue } from "../lib/format";
-import { monotonePath, niceTicks, type HistoryPoint } from "../lib/history";
+import { CURRENCY_LABEL, formatMoney, type Currency, type Rates } from "../lib/currency";
+import { monotonePath, niceTicks, pointValue, type HistoryPoint } from "../lib/history";
 
 const RANGES = [
   { key: "24h", label: "24 h", ms: 24 * 3600e3 },
@@ -19,8 +20,15 @@ function shortDate(ms: number, spanMs: number): string {
   return spanMs <= 4 * 24 * 3600e3 ? `${day} ${d.getHours()} h` : day;
 }
 
-/** Évolution du net worth (Divine) de la ligue courante, avec survol. */
-export function NetWorthChart({ history, league }: { history: HistoryPoint[]; league: string }) {
+interface Props {
+  history: HistoryPoint[];
+  league: string;
+  currency: Currency;
+  rates: Rates;
+}
+
+/** Évolution du net worth de la ligue courante dans la devise affichée, avec survol. */
+export function NetWorthChart({ history, league, currency, rates }: Props) {
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("all");
   const [hover, setHover] = useState<number | null>(null);
   const [width, setWidth] = useState(800);
@@ -37,8 +45,10 @@ export function NetWorthChart({ history, league }: { history: HistoryPoint[]; le
   const points = useMemo(() => {
     const span = RANGES.find((r) => r.key === range)!.ms;
     const now = Date.now();
-    return history.filter((p) => p.league === league && now - p.at <= span);
-  }, [history, league, range]);
+    return history
+      .filter((p) => p.league === league && now - p.at <= span)
+      .map((p) => ({ ...p, value: pointValue(p, currency, rates) }));
+  }, [history, league, range, currency, rates]);
 
   const header = (
     <div className="chart-head">
@@ -67,13 +77,13 @@ export function NetWorthChart({ history, league }: { history: HistoryPoint[]; le
   const t0 = points[0].at;
   const t1 = points[points.length - 1].at;
   const span = Math.max(t1 - t0, 1);
-  const ticks = niceTicks(Math.max(...points.map((p) => p.divine)) * 1.05);
+  const ticks = niceTicks(Math.max(...points.map((p) => p.value)) * 1.05);
   const yMax = ticks[ticks.length - 1] || 1;
   const innerW = width - M.left - M.right;
   const innerH = HEIGHT - M.top - M.bottom;
   const X = (at: number) => M.left + ((at - t0) / span) * innerW;
   const Y = (v: number) => M.top + innerH - (v / yMax) * innerH;
-  const xy = points.map((p) => ({ x: X(p.at), y: Y(p.divine) }));
+  const xy = points.map((p) => ({ x: X(p.at), y: Y(p.value) }));
   const xTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => t0 + f * span);
 
   function onMove(e: PointerEvent<SVGRectElement>) {
@@ -87,23 +97,23 @@ export function NetWorthChart({ history, league }: { history: HistoryPoint[]; le
   }
 
   const h = hover !== null ? points[hover] : null;
-  const first = points[0].divine;
-  const last = points[points.length - 1].divine;
+  const first = points[0].value;
+  const last = points[points.length - 1].value;
   const delta = last - first;
 
   return (
     <section className="chart" ref={box}>
       {header}
       <p className="chart-summary">
-        <span className="networth-inline">{formatValue(last)} div</span>{" "}
+        <span className="networth-inline">{formatMoney(last, currency)}</span>{" "}
         <span className={delta >= 0 ? "delta-up" : "delta-down"}>
           {delta >= 0 ? "+" : "−"}
-          {formatValue(Math.abs(delta))} div
+          {formatMoney(Math.abs(delta), currency)}
         </span>{" "}
         <span className="muted">sur la période</span>
       </p>
       <div className="chart-plot">
-        <svg width={width} height={HEIGHT} role="img" aria-label={`Net worth de ${formatValue(first)} à ${formatValue(last)} Divine`}>
+        <svg width={width} height={HEIGHT} role="img" aria-label={`Net worth de ${formatValue(first)} à ${formatValue(last)} ${CURRENCY_LABEL[currency]}`}>
           {ticks.map((v) => (
             <g key={v}>
               <line x1={M.left} x2={width - M.right} y1={Y(v)} y2={Y(v)} className="chart-grid" />
@@ -149,7 +159,8 @@ export function NetWorthChart({ history, league }: { history: HistoryPoint[]; le
               {new Date(h.at).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
             </div>
             <div>
-              <strong>{formatValue(h.divine)} div</strong> · {formatValue(h.exalted)} ex
+              <strong>{formatMoney(h.value, currency)}</strong>
+              {currency !== "divine" && <> · {formatValue(h.divine)} div</>}
             </div>
           </div>
         )}
