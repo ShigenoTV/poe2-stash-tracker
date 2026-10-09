@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { buildSnapshot } from "./snapshot";
 import { mergeScan, type TabScan } from "./stashTabs";
 import {
@@ -44,6 +45,11 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
   useEffect(() => {
     if (prices && tabs.length > 0) onSnapshot(buildSnapshot(tabs.map((t) => t.scan), prices));
   }, [tabs, prices, onSnapshot]);
+
+  // Prix chargés dès le démarrage : taux de change (Chaos…) disponibles même sans nouveau scan.
+  useEffect(() => {
+    if (isTauri()) getPrices().then((p) => setPrices((cur) => cur ?? p)).catch(() => {});
+  }, []);
 
   const ensurePrices = useCallback(async () => {
     if (!prices) setPrices(await getPrices());
