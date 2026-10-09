@@ -231,10 +231,26 @@ mod tests {
             assert!(scan.slots.len() >= 36, "{name}: {} cases", scan.slots.len());
             assert!(looks_like_stash(&scan), "{name}");
         }
-        // Les chiffres ont été appris en 1440p : la lecture y est complète.
         let img = fixture("fullscreen-2560x1440.png");
         let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
         assert_eq!(scan.slots.iter().filter(|s| s.quantity.is_some()).count(), 35);
+    }
+
+    #[test]
+    fn reads_every_quantity_in_1080p() {
+        let img = fixture("fullscreen-1920x1080.png");
+        let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
+        let read: Vec<Option<u32>> = scan.slots.iter().map(|s| s.quantity).collect();
+        #[rustfmt::skip]
+        let want = [
+            Some(159), Some(166), Some(19), Some(65), Some(150), Some(16), Some(47), Some(32), Some(2),
+            Some(236), Some(186), Some(26), Some(9), Some(81), Some(110),
+            Some(229), Some(41), Some(9), Some(50), Some(245), Some(123),
+            Some(5000), Some(29), Some(1), None, Some(39), Some(68),
+            Some(84), Some(28), Some(1), Some(18), Some(9), Some(3),
+            Some(37), Some(146), Some(1), Some(523),
+        ];
+        assert_eq!(read, want);
     }
 
     #[test]

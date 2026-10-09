@@ -104,6 +104,27 @@ pub fn find_filled_slots(img: &RgbImage) -> Vec<Rect> {
     }
 
     let min_side = side * 5 / 6;
+    // Une grosse icône peut couper le fond en deux moitiés hautes (ou larges) trop écartées
+    // pour le regroupement ci-dessus : on les réunit si, ensemble, elles forment une case.
+    let undersized = |r: &Rect| r.w < min_side || r.h < min_side;
+    let mut i = 0;
+    while i < clusters.len() {
+        let partner = (0..clusters.len()).find(|&j| {
+            let (a, b) = (&clusters[i], &clusters[j]);
+            let u = union(a, b);
+            let rows = a.h >= min_side && b.h >= min_side && a.y.abs_diff(b.y) <= side / 8;
+            let cols = a.w >= min_side && b.w >= min_side && a.x.abs_diff(b.x) <= side / 8;
+            j != i && undersized(a) && undersized(b) && (rows || cols) && u.w <= max_union && u.h <= max_union
+        });
+        match partner {
+            Some(j) => {
+                clusters[i] = union(&clusters[i], &clusters[j]);
+                clusters.swap_remove(j);
+                i = 0;
+            }
+            None => i += 1,
+        }
+    }
     let mut slots: Vec<Rect> = clusters
         .into_iter()
         .filter(|r| r.w >= min_side && r.h >= min_side)
@@ -133,11 +154,20 @@ pub struct Glyph {
     pub cells: [u8; GLYPH_W * GLYPH_H],
 }
 
-/// Texte des quantités : blanc quasi pur, peu saturé.
-fn is_digit_ink(p: &image::Rgb<u8>) -> bool {
+/// Texte des quantités : blanc quasi pur, peu saturé. En petite résolution (cases de moins de
+/// 60 px, 1080p), les traits ne font qu'un pixel et l'anticrénelage les assombrit : le seuil baisse.
+fn is_digit_ink(p: &image::Rgb<u8>, side: u32) -> bool {
     let [r, g, b] = p.0;
     let (lo, hi) = (r.min(g).min(b), r.max(g).max(b));
-    lo >= 185 && hi - lo <= 45
+    lo >= ink_min(side) && hi - lo <= 45
+}
+
+fn ink_min(side: u32) -> u8 {
+    if side < 60 {
+        130
+    } else {
+        185
+    }
 }
 
 /// Isole les chiffres de la quantité, en haut à gauche de la case.
@@ -148,7 +178,7 @@ pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -
     let h = (side * 2 / 5).min(img.height() - y0);
     let mask: Vec<bool> = (0..h)
         .flat_map(|y| (0..w).map(move |x| (x, y)))
-        .map(|(x, y)| is_digit_ink(img.get_pixel(x0 + x, y0 + y)))
+        .map(|(x, y)| is_digit_ink(img.get_pixel(x0 + x, y0 + y), side))
         .collect();
 
     let min_h = side * 3 / 20;
@@ -172,10 +202,10 @@ pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -
             line.push(*r);
         }
     }
-    line.iter().map(|r| Glyph { rect: *r, cells: normalize(img, r) }).collect()
+    line.iter().map(|r| Glyph { rect: *r, cells: normalize(img, r, side) }).collect()
 }
 
-fn normalize(img: &RgbImage, r: &Rect) -> [u8; GLYPH_W * GLYPH_H] {
+fn normalize(img: &RgbImage, r: &Rect, side: u32) -> [u8; GLYPH_W * GLYPH_H] {
     let mut cells = [0u8; GLYPH_W * GLYPH_H];
     for cy in 0..GLYPH_H {
         for cx in 0..GLYPH_W {
@@ -185,7 +215,7 @@ fn normalize(img: &RgbImage, r: &Rect) -> [u8; GLYPH_W * GLYPH_H] {
             for y in sy0..sy1 {
                 for x in sx0..sx1 {
                     total += 1;
-                    ink += u32::from(is_digit_ink(img.get_pixel(x, y)));
+                    ink += u32::from(is_digit_ink(img.get_pixel(x, y), side));
                 }
             }
             cells[cy * GLYPH_W + cx] = (ink * 255 / total.max(1)) as u8;
@@ -258,14 +288,18 @@ pub fn classify(glyph: &Glyph) -> Option<char> {
 
 /// Quantité lue dans une case, ou `None` si aucun chiffre n'est reconnu.
 pub fn read_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
-    let read = |diagonal| -> Option<String> {
-        let digits: Option<String> = quantity_glyphs(img, slot, side, diagonal).iter().map(classify).collect();
-        digits.filter(|d| !d.is_empty())
+    // Chiffres reconnus jusqu'au premier glyphe inconnu (souvent un reflet de l'icône collé
+    // derrière la quantité), et si la lecture est allée jusqu'au bout.
+    let read = |diagonal| -> (usize, bool, String) {
+        let glyphs = quantity_glyphs(img, slot, side, diagonal);
+        let digits: String = glyphs.iter().map_while(classify).collect();
+        (digits.len(), digits.len() == glyphs.len(), digits)
     };
     // En 4-voisinage, un trait diagonal fin (flux vidéo compressé, GeForce NOW) coupe le chiffre
     // en deux et il est perdu ; en 8-voisinage, un chiffre qui touche l'icône s'y colle. On garde
-    // la lecture la plus complète des deux.
-    [read(false), read(true)].into_iter().flatten().max_by_key(|d| d.len())?.parse().ok()
+    // la lecture la plus longue des deux, complète de préférence.
+    let (_, _, digits) = [read(false), read(true)].into_iter().max_by_key(|(len, full, _)| (*len, *full))?;
+    digits.parse().ok()
 }
 
 /// Palier de l'objet d'après la marque en bas à droite de la case : 2 pour « II » (Greater),
@@ -276,7 +310,7 @@ pub fn tier_mark(img: &RgbImage, slot: &Rect, side: u32) -> u8 {
     let x1 = (slot.x + slot.w).min(img.width());
     let y1 = (slot.y + slot.h).min(img.height());
     let min_ink = (side * 3 / 20).max(4);
-    let is_bar = |x: u32| (y0..y1).filter(|&y| is_digit_ink(img.get_pixel(x, y))).count() as u32 >= min_ink;
+    let is_bar = |x: u32| (y0..y1).filter(|&y| is_digit_ink(img.get_pixel(x, y), side)).count() as u32 >= min_ink;
     let (mut bars, mut run) = (0u8, 0u32);
     for x in x0..x1 {
         if is_bar(x) {
