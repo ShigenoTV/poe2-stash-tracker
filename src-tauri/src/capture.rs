@@ -6,24 +6,15 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
-use serde::Serialize;
 
 /// Morceau du titre de la fenêtre du jeu.
 pub const GAME_WINDOW_TITLE: &str = "Path of Exile 2";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CaptureMethod {
-    Wgc,
-    Gdi,
-}
 
 /// Image RGBA 8 bits, sans padding.
 pub struct Captured {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
-    pub method: CaptureMethod,
 }
 
 /// Une image presque entièrement noire signale une capture ratée
@@ -52,7 +43,7 @@ pub fn capture_game_window() -> Result<Captured, String> {
 
 #[cfg(windows)]
 mod win {
-    use super::{looks_black, CaptureMethod, Captured, GAME_WINDOW_TITLE};
+    use super::{looks_black, Captured, GAME_WINDOW_TITLE};
     use std::sync::{mpsc, Mutex};
     use std::time::Duration;
     use windows::Win32::Foundation::HWND;
@@ -126,7 +117,7 @@ mod win {
         let result = rx.recv_timeout(WGC_TIMEOUT);
         let _ = control.stop();
         let (width, height, rgba) = result.map_err(|_| "WGC : aucune image reçue".to_string())?;
-        Ok(Captured { width, height, rgba, method: CaptureMethod::Wgc })
+        Ok(Captured { width, height, rgba })
     }
 
     fn capture_gdi(hwnd: HWND) -> Result<Captured, String> {
@@ -183,7 +174,7 @@ mod win {
                 px.swap(0, 2);
                 px[3] = 255;
             }
-            Ok(Captured { width: w as u32, height: h as u32, rgba: bgra, method: CaptureMethod::Gdi })
+            Ok(Captured { width: w as u32, height: h as u32, rgba: bgra })
         }
     }
 
