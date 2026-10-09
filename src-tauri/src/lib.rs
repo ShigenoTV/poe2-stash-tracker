@@ -1,4 +1,5 @@
 mod capture;
+mod history;
 mod icons;
 mod library;
 mod pricing;
@@ -15,13 +16,16 @@ pub fn run() {
         .manage(scan::LastCapture::default())
         .manage(library::LibraryState::default())
         .manage(scan::AutoScanState::default())
+        .manage(history::HistoryState::default())
         .invoke_handler(tauri::generate_handler![
             scan::capture_game,
             scan::scan_region,
             scan::auto_scan,
             scan::reset_auto_scan,
             library::get_prices,
-            library::label_slot
+            library::label_slot,
+            history::load_history,
+            history::record_history
         ]);
 
     #[cfg(desktop)]

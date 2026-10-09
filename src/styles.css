@@ -150,3 +150,25 @@ button { font: inherit; color: inherit; }
 .auto-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .auto-toggle input { accent-color: var(--accent); }
 .ghost { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+
+.chart { position: relative; margin-bottom: 20px; padding: 14px 16px 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chart-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.chart-ranges { display: flex; gap: 2px; background: var(--bg); border-radius: 6px; padding: 2px; }
+.chart-ranges button { background: none; border: 0; border-radius: 4px; padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
+.chart-ranges button.active { background: var(--panel-2); color: var(--text); }
+.chart-summary { margin: 6px 0 4px; font-size: 13px; }
+.delta-up { color: #7fc48f; }
+.delta-down { color: #e8907c; }
+.chart-empty { margin: 16px 0 12px; }
+.chart-plot { position: relative; overflow: hidden; }
+.chart-plot svg { display: block; }
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+.chart-tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+.chart-tooltip {
+  position: absolute; pointer-events: none; padding: 6px 10px; font-size: 12px; white-space: nowrap;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px #0008;
+}

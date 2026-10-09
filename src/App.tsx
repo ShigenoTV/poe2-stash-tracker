@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
 import { ItemGrid } from "./components/ItemGrid";
+import { NetWorthChart } from "./components/NetWorthChart";
+import { loadHistory, recordSnapshot, type HistoryPoint } from "./lib/history";
 import { ScannerView } from "./components/ScannerView";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
@@ -12,9 +14,14 @@ import "./styles.css";
 
 export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(loadSnapshot);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  useEffect(() => {
+    loadHistory().then(setHistory).catch(() => {});
+  }, []);
   const onSnapshot = useCallback((s: Snapshot) => {
     setSnapshot(s);
     saveSnapshot(s);
+    recordSnapshot(s).then(setHistory).catch((err) => console.warn("Historique non enregistré :", err));
   }, []);
   const [filter, setFilter] = useState<CategoryFilter>("All");
   const updater = useUpdater();
@@ -68,6 +75,7 @@ export default function App() {
           <div className="body">
             <CategorySidebar selected={filter} totals={totals} onSelect={setFilter} />
             <main className="content">
+              <NetWorthChart history={history} league={snapshot.league} />
               <ItemGrid items={visible} />
             </main>
           </div>
