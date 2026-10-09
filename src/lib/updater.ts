@@ -2,14 +2,14 @@ import { isTauri } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
-/** Cherche une mise à jour sur GitHub Releases. Silencieux hors Tauri ou en cas d'erreur réseau. */
-export async function findUpdate(): Promise<Update | null> {
-  if (!isTauri()) return null;
+/** Cherche une mise à jour sur GitHub Releases. Hors Tauri, ne fait rien. */
+export async function findUpdate(): Promise<{ update: Update | null; error: string | null }> {
+  if (!isTauri()) return { update: null, error: "Mise à jour disponible seulement dans l'application installée." };
   try {
-    return await check();
+    return { update: await check(), error: null };
   } catch (err) {
     console.warn("Vérification de mise à jour impossible :", err);
-    return null;
+    return { update: null, error: String(err) };
   }
 }
 

@@ -139,3 +139,10 @@ button { font: inherit; color: inherit; }
 .slot-editor-list button:hover { background: var(--panel-2); }
 .slot-editor-list img { width: 28px; height: 28px; object-fit: contain; }
 .slot-editor-list .muted { margin-left: auto; font-size: 12px; }
+
+.update-check { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.update-check button {
+  background: none; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+.update-check button:hover:not(:disabled) { border-color: var(--accent); }
+.update-check button:disabled { opacity: 0.5; cursor: default; }

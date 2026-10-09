@@ -3,7 +3,8 @@ import { CategorySidebar, type CategoryFilter } from "./components/CategorySideb
 import { ItemGrid } from "./components/ItemGrid";
 import { ScannerView } from "./components/ScannerView";
 import { SnapshotHeader } from "./components/SnapshotHeader";
-import { UpdateBanner } from "./components/UpdateBanner";
+import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
+import { useUpdater } from "./lib/useUpdater";
 import { loadSnapshot, saveSnapshot } from "./lib/snapshot";
 import { CATEGORIES, type Category, type Snapshot } from "./lib/types";
 import "./styles.css";
@@ -15,6 +16,7 @@ export default function App() {
     saveSnapshot(s);
   }, []);
   const [filter, setFilter] = useState<CategoryFilter>("All");
+  const updater = useUpdater();
   const [view, setView] = useState<"snapshot" | "scanner">("snapshot");
 
   const totals = useMemo(() => {
@@ -37,7 +39,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <UpdateBanner />
+      <UpdateBanner updater={updater} />
       <nav className="tabs">
         <button type="button" className={view === "snapshot" ? "active" : ""} onClick={() => setView("snapshot")}>
           Snapshot
@@ -45,6 +47,7 @@ export default function App() {
         <button type="button" className={view === "scanner" ? "active" : ""} onClick={() => setView("scanner")}>
           Scanner
         </button>
+        <UpdateCheck updater={updater} />
       </nav>
       {view === "scanner" ? (
         <main className="content">

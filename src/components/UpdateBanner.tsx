@@ -1,32 +1,9 @@
-import { useEffect, useState } from "react";
-import type { Update } from "@tauri-apps/plugin-updater";
-import { findUpdate, installAndRestart } from "../lib/updater";
+import type { Updater } from "../lib/useUpdater";
 
-export function UpdateBanner() {
-  const [update, setUpdate] = useState<Update | null>(null);
-  const [progress, setProgress] = useState<number | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    findUpdate().then(setUpdate);
-  }, []);
-
+export function UpdateBanner({ updater }: { updater: Updater }) {
+  const { update, progress, error, install } = updater;
   if (!update) return null;
-
   const installing = progress !== undefined;
-
-  async function install() {
-    if (!update) return;
-    setError(null);
-    setProgress(null);
-    try {
-      await installAndRestart(update, setProgress);
-    } catch (err) {
-      setProgress(undefined);
-      setError(String(err));
-    }
-  }
-
   return (
     <div className="update-banner" role="status">
       <span>
@@ -39,6 +16,33 @@ export function UpdateBanner() {
             ? "Téléchargement…"
             : `Téléchargement ${progress}%`
           : "Mettre à jour et redémarrer"}
+      </button>
+    </div>
+  );
+}
+
+const STATE_LABEL = {
+  idle: null,
+  checking: "Recherche…",
+  upToDate: "À jour",
+  available: "Mise à jour disponible",
+  error: "Recherche impossible",
+} as const;
+
+/** Bouton « Rechercher une mise à jour » et numéro de version, dans la barre d'onglets. */
+export function UpdateCheck({ updater }: { updater: Updater }) {
+  const { version, state, error, check } = updater;
+  const label = STATE_LABEL[state];
+  return (
+    <div className="update-check">
+      {version && <span className="muted">v{version}</span>}
+      {label && (
+        <span className={state === "error" ? "update-error" : "muted"} title={error ?? undefined}>
+          {label}
+        </span>
+      )}
+      <button type="button" onClick={() => check(true)} disabled={state === "checking"}>
+        Rechercher une mise à jour
       </button>
     </div>
   );
