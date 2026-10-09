@@ -1,6 +1,6 @@
 mod capture;
 mod history;
-mod icons;
+pub mod icons;
 mod library;
 mod pricing;
 mod ratelimit;

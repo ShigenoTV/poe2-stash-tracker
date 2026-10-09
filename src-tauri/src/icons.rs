@@ -11,6 +11,11 @@ use image::{imageops, Rgb, RgbImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 pub const GRID: usize = 16;
+/// Poids de la distance : forme centrée (tolère l'éclairage), teinte moyenne, et couleur case
+/// par case. Cette dernière départage les Omens, même forme en jaune, bleu, violet ou sombre.
+const W_SHAPE: f32 = 0.3;
+const W_MEAN: f32 = 0.2;
+const W_RAW: f32 = 0.5;
 /// Fond d'une case occupée, utilisé pour poser les icônes transparentes de poe.ninja.
 const SLOT_BACKGROUND: Rgb<u8> = Rgb([4, 4, 30]);
 
@@ -68,8 +73,8 @@ pub fn distance(a: &Descriptor, b: &Descriptor, ignore_tier: bool) -> f32 {
         for ch in 0..3 {
             let va = f32::from(a.0[i * 3 + ch]) - ma[ch];
             let vb = f32::from(b.0[i * 3 + ch]) - mb[ch];
-            // Moitié pour la forme centrée, moitié pour la couleur brute.
-            total += 0.5 * (va - vb).abs() + 0.5 * (ma[ch] - mb[ch]).abs();
+            let raw = f32::from(a.0[i * 3 + ch]) - f32::from(b.0[i * 3 + ch]);
+            total += W_SHAPE * (va - vb).abs() + W_MEAN * (ma[ch] - mb[ch]).abs() + W_RAW * raw.abs();
         }
     }
     total / (cells.len() * 3) as f32 / 255.0
@@ -131,6 +136,26 @@ mod tests {
         let slots = slot_images();
         let d: Vec<Descriptor> = slots.iter().take(3).map(describe_slot).collect();
         assert!(distance(&d[1], &d[2], false) > distance(&d[1], &d[2], true));
+    }
+
+    #[test]
+    fn omens_of_the_same_shape_are_told_apart_by_colour() {
+        // Onglet Ritual, rangée du bas, deuxième case : Omen of Amelioration (forme 3, bleu),
+        // longtemps confondu avec Omen of Dextral Annulment (même forme, violet).
+        let fixtures = format!("{}/tests/fixtures", env!("CARGO_MANIFEST_DIR"));
+        let tab = image::open(format!("{fixtures}/ritual-tab.png")).unwrap().to_rgb8();
+        let slot = vision::find_filled_slots(&tab)
+            .into_iter()
+            .find(|s| s.x.abs_diff(210) < 8 && s.y.abs_diff(741) < 8)
+            .unwrap();
+        let d = describe_slot(&imageops::crop_imm(&tab, slot.x, slot.y, slot.w, slot.h).to_image());
+        let names = ["VoodooOmens3Blue", "VoodooOmens3Purple", "VoodooOmens3Yellow", "VoodooOmens3Dark", "VoodooOmens2Blue", "VoodooOmens2Purple"];
+        let refs: Vec<(&str, Descriptor)> = names
+            .iter()
+            .map(|n| (*n, describe_reference(&image::open(format!("{fixtures}/icons/{n}.png")).unwrap().to_rgba8())))
+            .collect();
+        let best = rank(&d, refs.iter().map(|(n, d)| (*n, d)), true, 2);
+        assert_eq!(best[0].item_id, "VoodooOmens3Blue", "{best:?}");
     }
 
     #[test]
