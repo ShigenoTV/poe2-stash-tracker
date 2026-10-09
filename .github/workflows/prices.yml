@@ -1,0 +1,36 @@
+name: Prix poe.ninja
+
+on:
+  schedule:
+    - cron: "17 * * * *" # toutes les heures ; poe.ninja rafraîchit ses overviews PoE2 ~1 fois/h
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Récupérer les prix
+        run: node scripts/fetch-prices.mjs out
+      - name: Publier sur la branche prices
+        # Branche orpheline réécrite à chaque passage : un seul commit, le dépôt ne grossit pas.
+        # L'app lit https://raw.githubusercontent.com/ShigenoTV/poe2-stash-tracker/prices/<ligue>/latest.json
+        working-directory: out
+        run: |
+          git init -q -b prices
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Prix poe.ninja $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" prices
