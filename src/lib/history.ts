@@ -23,6 +23,11 @@ export async function loadHistory(): Promise<HistoryPoint[]> {
   return isTauri() ? invoke<HistoryPoint[]>("load_history") : [];
 }
 
+/** Efface la courbe d'une ligue, ou toutes les courbes sans ligue. */
+export function clearHistory(league: string | null): Promise<HistoryPoint[]> {
+  return invoke<HistoryPoint[]>("clear_history", { league });
+}
+
 /** Enregistre la valeur d'un snapshot ; renvoie l'historique à jour. */
 export function recordSnapshot(snapshot: Snapshot): Promise<HistoryPoint[]> {
   const exalted = snapshot.items.reduce((sum, i) => sum + (i.unitExalted ?? 0) * i.quantity, 0);

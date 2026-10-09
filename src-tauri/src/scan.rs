@@ -1,6 +1,6 @@
-//! Commandes Tauri : capture de la fenêtre du jeu et lecture du coffre dans une zone choisie.
+//! Commandes Tauri : lecture du coffre, à sa place fixe dans la fenêtre du jeu.
 
-use crate::capture::{self, CaptureMethod};
+use crate::capture;
 use crate::icons;
 use crate::library::{Identification, LibraryState};
 use crate::vision::{self, Rect};
@@ -10,20 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Mutex;
 
-/// Dernière capture, gardée pour pouvoir relire une zone sans recapturer.
-#[derive(Default)]
-pub struct LastCapture(pub Mutex<Option<RgbImage>>);
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CapturePreview {
-    pub width: u32,
-    pub height: u32,
-    pub method: CaptureMethod,
-    /// PNG encodé en base64, réduit pour l'affichage.
-    pub png_base64: String,
-}
-
 /// Zone du coffre en fractions de l'image (0..1), pour survivre à un changement de résolution.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Region {
@@ -31,6 +17,22 @@ pub struct Region {
     pub y: f64,
     pub w: f64,
     pub h: f64,
+}
+
+impl Region {
+    /// Grille du coffre ouvert. L'interface du jeu est ancrée à gauche et suit la hauteur de
+    /// l'écran : mesurée identique en 1920×1080 et 2560×1440 (x 18, y 123, 637×642 sur 1080).
+    pub fn stash(width: u32, height: u32) -> Region {
+        let unit = f64::from(height) / 1080.0;
+        let (w, h) = (f64::from(width.max(1)), f64::from(height.max(1)));
+        Region { x: 18.0 * unit / w, y: 123.0 * unit / h, w: 637.0 * unit / w, h: 642.0 * unit / h }
+    }
+}
+
+/// Un coffre ouvert montre des cases de taille régulière, dont plusieurs avec une quantité ;
+/// le décor du jeu (coffre fermé) n'en produit pas.
+fn looks_like_stash(scan: &ScanResult) -> bool {
+    scan.slot_side.is_some() && scan.slots.iter().filter(|s| s.quantity.is_some()).count() >= 2
 }
 
 #[derive(Serialize)]
@@ -68,20 +70,6 @@ fn to_rgb(c: capture::Captured) -> Result<RgbImage, String> {
     let rgba = image::RgbaImage::from_raw(c.width, c.height, c.rgba)
         .ok_or("Capture : taille d'image incohérente")?;
     Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8())
-}
-
-#[tauri::command]
-pub async fn capture_game(state: tauri::State<'_, LastCapture>) -> Result<CapturePreview, String> {
-    let captured = tauri::async_runtime::spawn_blocking(capture::capture_game_window)
-        .await
-        .map_err(|e| e.to_string())??;
-    let method = captured.method;
-    let img = to_rgb(captured)?;
-    let pw = img.width().min(1600);
-    let preview = imageops::thumbnail(&img, pw, img.height() * pw / img.width().max(1));
-    let result = CapturePreview { width: img.width(), height: img.height(), method, png_base64: png_base64(&preview)? };
-    *state.0.lock().map_err(|e| e.to_string())? = Some(img);
-    Ok(result)
 }
 
 pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
@@ -138,23 +126,6 @@ async fn identify_all(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn scan_region(
-    app: tauri::AppHandle,
-    capture: tauri::State<'_, LastCapture>,
-    library: tauri::State<'_, LibraryState>,
-    region: Region,
-) -> Result<ScanResult, String> {
-    let stash = {
-        let guard = capture.0.lock().map_err(|e| e.to_string())?;
-        let img = guard.as_ref().ok_or("Aucune capture : capture d'abord la fenêtre du jeu.")?;
-        crop_region(img, region)?
-    };
-    let mut result = scan_image(&stash)?;
-    identify_all(&app, &library, &mut result).await?;
-    Ok(result)
-}
-
 /// Vignette grise de la zone, pour détecter un changement d'onglet à moindre coût.
 fn thumbnail(img: &RgbImage) -> Vec<u8> {
     let gray = image::DynamicImage::ImageRgb8(img.clone()).to_luma8();
@@ -190,6 +161,8 @@ pub enum AutoScanResult {
     Changing,
     /// Nouvelle image stable, scannée.
     Scanned { scan: ScanResult },
+    /// Image stable, mais le coffre n'est pas ouvert.
+    NoStash,
 }
 
 /// Un tour du scan automatique : capture, puis scan seulement si la zone a changé
@@ -199,12 +172,13 @@ pub async fn auto_scan(
     app: tauri::AppHandle,
     library: tauri::State<'_, LibraryState>,
     auto: tauri::State<'_, AutoScanState>,
-    region: Region,
+    region: Option<Region>,
 ) -> Result<AutoScanResult, String> {
     let captured = tauri::async_runtime::spawn_blocking(capture::capture_game_window)
         .await
         .map_err(|e| e.to_string())??;
-    let stash = crop_region(&to_rgb(captured)?, region)?;
+    let img = to_rgb(captured)?;
+    let stash = crop_region(&img, region.unwrap_or_else(|| Region::stash(img.width(), img.height())))?;
     let thumb = thumbnail(&stash);
 
     {
@@ -223,9 +197,10 @@ pub async fn auto_scan(
     }
 
     let mut scan = scan_image(&stash)?;
-    if !scan.slots.is_empty() {
-        identify_all(&app, &library, &mut scan).await?;
+    if !looks_like_stash(&scan) {
+        return Ok(AutoScanResult::NoStash);
     }
+    identify_all(&app, &library, &mut scan).await?;
     Ok(AutoScanResult::Scanned { scan })
 }
 
@@ -239,6 +214,36 @@ pub fn reset_auto_scan(auto: tauri::State<'_, AutoScanState>) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture(name: &str) -> RgbImage {
+        let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+        image::open(path).unwrap().to_rgb8()
+    }
+
+    #[test]
+    fn fixed_region_finds_the_open_stash_at_both_resolutions() {
+        for name in ["fullscreen-1920x1080.png", "fullscreen-2560x1440.png"] {
+            let img = fixture(name);
+            let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
+            assert!(scan.slots.len() >= 36, "{name}: {} cases", scan.slots.len());
+            assert!(looks_like_stash(&scan), "{name}");
+        }
+        // Les chiffres ont été appris en 1440p : la lecture y est complète.
+        let img = fixture("fullscreen-2560x1440.png");
+        let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
+        assert_eq!(scan.slots.iter().filter(|s| s.quantity.is_some()).count(), 35);
+    }
+
+    #[test]
+    fn game_scenery_is_not_a_stash() {
+        let img = fixture("fullscreen-1920x1080.png");
+        // Même taille de zone, déplacée sur le décor au centre de l'écran.
+        let mut region = Region::stash(img.width(), img.height());
+        region.x = 0.36;
+        region.w = 0.3;
+        let scan = scan_image(&crop_region(&img, region).unwrap()).unwrap();
+        assert!(!looks_like_stash(&scan));
+    }
 
     #[test]
     fn thumbnails_detect_tab_change_but_not_noise() {

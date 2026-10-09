@@ -36,9 +36,17 @@ pub struct Labeled {
     pub descriptor: Descriptor,
 }
 
+/// Réglages persistants.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Settings {
+    /// Ligue choisie ; `None` = la première du fichier de prix (ligue en cours).
+    league: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Library {
     pub prices: Option<PriceFile>,
+    settings: Option<Settings>,
     references: Vec<(String, Descriptor)>,
     memory: Option<Vec<Labeled>>,
 }
@@ -116,8 +124,10 @@ async fn fetch_prices(app: &tauri::AppHandle, league: Option<&str>) -> Result<Pr
     .await;
     match online {
         Ok(file) => Ok(file),
-        Err(err) => read_json(&cache.join("last.json"))
+        // La copie hors ligne ne sert que si c'est la bonne ligue.
+        Err(err) => read_json::<PriceFile>(&cache.join("last.json"))
             .await
+            .filter(|f| league.is_none_or(|id| f.league == id))
             .ok_or(format!("Prix indisponibles : {err}")),
     }
 }
@@ -175,8 +185,12 @@ impl Library {
             let path = data_dir(app)?.join("labels.json");
             self.memory = Some(read_json(&path).await.unwrap_or_default());
         }
+        if self.settings.is_none() {
+            self.settings = Some(read_json(&data_dir(app)?.join("settings.json")).await.unwrap_or_default());
+        }
         if self.prices.is_none() {
-            let prices = fetch_prices(app, None).await?;
+            let league = self.settings.as_ref().and_then(|s| s.league.clone());
+            let prices = fetch_prices(app, league.as_deref()).await?;
             self.references = build_references(app, &prices).await?;
             self.prices = Some(prices);
         }
@@ -208,6 +222,65 @@ pub async fn get_prices(app: tauri::AppHandle, state: tauri::State<'_, LibrarySt
     let mut lib = state.0.lock().await;
     lib.ensure_loaded(&app).await?;
     Ok(lib.prices.clone().expect("chargé juste au-dessus"))
+}
+
+/// Retélécharge le fichier de prix (publié toutes les heures depuis poe.ninja).
+#[tauri::command]
+pub async fn refresh_prices(app: tauri::AppHandle, state: tauri::State<'_, LibraryState>) -> Result<PriceFile, String> {
+    let mut lib = state.0.lock().await;
+    lib.prices = None;
+    lib.ensure_loaded(&app).await?;
+    Ok(lib.prices.clone().expect("chargé juste au-dessus"))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Leagues {
+    pub leagues: Vec<LeagueEntry>,
+    /// Ligue choisie dans les réglages, `None` = ligue en cours.
+    pub selected: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_leagues(app: tauri::AppHandle, state: tauri::State<'_, LibraryState>) -> Result<Leagues, String> {
+    let index: LeagueIndex = client()?
+        .get(format!("{PRICES_BASE}/leagues.json"))
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut lib = state.0.lock().await;
+    if lib.settings.is_none() {
+        lib.settings = Some(read_json(&data_dir(&app)?.join("settings.json")).await.unwrap_or_default());
+    }
+    Ok(Leagues { leagues: index.leagues, selected: lib.settings.as_ref().and_then(|s| s.league.clone()) })
+}
+
+/// Change de ligue, l'enregistre et recharge ses prix.
+#[tauri::command]
+pub async fn set_league(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LibraryState>,
+    league: Option<String>,
+) -> Result<PriceFile, String> {
+    let mut lib = state.0.lock().await;
+    let settings = Settings { league };
+    write_bytes(&data_dir(&app)?.join("settings.json"), &serde_json::to_vec(&settings).map_err(|e| e.to_string())?).await?;
+    lib.settings = Some(settings);
+    lib.prices = None;
+    lib.ensure_loaded(&app).await?;
+    Ok(lib.prices.clone().expect("chargé juste au-dessus"))
+}
+
+/// Oublie toutes les cases corrigées par le joueur.
+#[tauri::command]
+pub async fn forget_labels(app: tauri::AppHandle, state: tauri::State<'_, LibraryState>) -> Result<(), String> {
+    let mut lib = state.0.lock().await;
+    lib.memory = Some(Vec::new());
+    write_bytes(&data_dir(&app)?.join("labels.json"), b"[]").await
 }
 
 #[tauri::command]

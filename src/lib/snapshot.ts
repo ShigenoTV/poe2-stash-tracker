@@ -31,6 +31,7 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
         quantity: slot.quantity,
         unitExalted: null,
         icon: `data:image/png;base64,${slot.iconPngBase64}`,
+        source: { tab, x: slot.x, y: slot.y },
       });
       continue;
     }
@@ -45,6 +46,7 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
         quantity: slot.quantity,
         unitExalted: priced.value * exaltedPerDivine,
         icon: priced.icon ?? `data:image/png;base64,${slot.iconPngBase64}`,
+        source: { tab, x: slot.x, y: slot.y },
       });
     }
   }
@@ -58,6 +60,22 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
     exaltedPerDivine,
     ...(prices.rates.chaos ? { chaosPerDivine: prices.rates.chaos } : {}),
     items: [...items.values()],
+  };
+}
+
+/** Revalorise un snapshot enregistré avec un nouveau fichier de prix (actualisation, autre ligue). */
+export function revalue(snapshot: Snapshot, prices: PriceFile): Snapshot {
+  const exaltedPerDivine = prices.rates.exalted ?? 1;
+  const byId = new Map(prices.items.map((i) => [i.id, i]));
+  return {
+    ...snapshot,
+    league: prices.league,
+    exaltedPerDivine,
+    chaosPerDivine: prices.rates.chaos,
+    items: snapshot.items.map((item) => {
+      const priced = byId.get(item.id);
+      return { ...item, unitExalted: priced ? priced.value * exaltedPerDivine : null };
+    }),
   };
 }
 
@@ -95,5 +113,13 @@ export function saveSnapshot(snapshot: Snapshot): void {
     localStorage.setItem(KEY, JSON.stringify(snapshot));
   } catch {
     // Stockage indisponible : le snapshot reste affiché jusqu'à la fermeture.
+  }
+}
+
+export function clearSnapshot(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // Rien à effacer.
   }
 }

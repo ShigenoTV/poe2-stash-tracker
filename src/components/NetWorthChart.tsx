@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { formatValue } from "../lib/format";
+import { ConfirmButton } from "./ConfirmButton";
 import { CURRENCY_LABEL, formatMoney, type Currency, type Rates } from "../lib/currency";
 import { monotonePath, niceTicks, pointValue, type HistoryPoint } from "../lib/history";
 
@@ -25,10 +26,11 @@ interface Props {
   league: string;
   currency: Currency;
   rates: Rates;
+  onReset: () => void;
 }
 
 /** Évolution du net worth de la ligue courante dans la devise affichée, avec survol. */
-export function NetWorthChart({ history, league, currency, rates }: Props) {
+export function NetWorthChart({ history, league, currency, rates, onReset }: Props) {
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("all");
   const [hover, setHover] = useState<number | null>(null);
   const [width, setWidth] = useState(800);
@@ -53,12 +55,15 @@ export function NetWorthChart({ history, league, currency, rates }: Props) {
   const header = (
     <div className="chart-head">
       <h2>Évolution du net worth</h2>
-      <div className="chart-ranges" role="group" aria-label="Période">
-        {RANGES.map((r) => (
-          <button key={r.key} type="button" className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>
-            {r.label}
-          </button>
-        ))}
+      <div className="chart-actions">
+        <ConfirmButton label="Remettre à zéro" onConfirm={onReset} />
+        <div className="chart-ranges" role="group" aria-label="Période">
+          {RANGES.map((r) => (
+            <button key={r.key} type="button" className={range === r.key ? "active" : ""} onClick={() => setRange(r.key)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

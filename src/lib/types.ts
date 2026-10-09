@@ -66,6 +66,8 @@ export interface SnapshotItem {
   icon?: string;
   /** Onglet(s) du coffre où l'objet a été vu, ex. « Expedition » (absent des anciens snapshots). */
   stash?: string;
+  /** Première case scannée de l'objet (onglet, position), pour pouvoir le corriger. */
+  source?: { tab: number; x: number; y: number };
 }
 
 export interface Snapshot {

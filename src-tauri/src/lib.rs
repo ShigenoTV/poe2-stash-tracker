@@ -13,19 +13,21 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .manage(scan::LastCapture::default())
         .manage(library::LibraryState::default())
         .manage(scan::AutoScanState::default())
         .manage(history::HistoryState::default())
         .invoke_handler(tauri::generate_handler![
-            scan::capture_game,
-            scan::scan_region,
             scan::auto_scan,
             scan::reset_auto_scan,
             library::get_prices,
+            library::refresh_prices,
+            library::list_leagues,
+            library::set_league,
+            library::forget_labels,
             library::label_slot,
             history::load_history,
-            history::record_history
+            history::record_history,
+            history::clear_history
         ]);
 
     #[cfg(desktop)]

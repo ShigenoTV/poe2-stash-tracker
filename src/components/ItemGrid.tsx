@@ -5,10 +5,13 @@ interface Props {
   items: SnapshotItem[];
   currency: Currency;
   rates: Rates;
+  /** Objets corrigeables : ceux dont l'onglet a été lu pendant cette session. */
+  canEdit: (item: SnapshotItem) => boolean;
+  onEdit: (item: SnapshotItem) => void;
 }
 
 /** Liste des objets, du plus précieux au moins précieux, valeur totale alignée à droite. */
-export function ItemGrid({ items, currency, rates }: Props) {
+export function ItemGrid({ items, currency, rates, canEdit, onEdit }: Props) {
   if (items.length === 0) {
     return <p className="empty">Aucun objet dans cette catégorie.</p>;
   }
@@ -17,8 +20,14 @@ export function ItemGrid({ items, currency, rates }: Props) {
     <ul className="item-list">
       {items.map((item) => {
         const total = item.unitExalted === null ? null : item.unitExalted * item.quantity;
+        const editable = canEdit(item);
         return (
-          <li key={item.id} className="item-row">
+          <li
+            key={item.id}
+            className={`item-row${editable ? " editable" : ""}`}
+            title={editable ? "Clique pour corriger l'objet" : undefined}
+            onClick={editable ? () => onEdit(item) : undefined}
+          >
             <span className="item-row-icon">{item.icon && <img src={item.icon} alt="" />}</span>
             <span className="item-row-name">{item.name}</span>
             <span className="item-row-stash muted" title="Onglet du coffre">{item.stash || "—"}</span>

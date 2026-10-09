@@ -61,3 +61,21 @@ describe("categoryOf", () => {
     expect(categoryOf("UncutGems")).toBe("Other");
   });
 });
+
+describe("revalue", () => {
+  it("reprend les prix et la ligue du nouveau fichier", async () => {
+    const { revalue } = await import("./snapshot");
+    const scan: ScanResult = { slotSide: 70, identifyError: null, slots: [slot(0, 10, "simulacrum-splinter")] };
+    const snap = buildSnapshot([scan], prices);
+    const next = revalue(snap, {
+      ...prices,
+      league: "Runes of Aldur",
+      rates: { exalted: 500, chaos: 8 },
+      items: [{ ...prices.items[0], value: 0.01 }],
+    });
+    expect(next.league).toBe("Runes of Aldur");
+    expect(next.chaosPerDivine).toBe(8);
+    expect(next.items[0].unitExalted).toBeCloseTo(5);
+    expect(next.items[0].source).toEqual({ tab: 0, x: 0, y: 0 });
+  });
+});

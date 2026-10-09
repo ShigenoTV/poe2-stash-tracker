@@ -3,15 +3,19 @@ import { CurrencySelect } from "./components/CurrencySelect";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
 import { ItemGrid } from "./components/ItemGrid";
 import { NetWorthChart } from "./components/NetWorthChart";
-import { loadHistory, recordSnapshot, type HistoryPoint } from "./lib/history";
-import { ScannerView } from "./components/ScannerView";
+import { clearHistory, loadHistory, recordSnapshot, type HistoryPoint } from "./lib/history";
+import { PricesControl } from "./components/PricesControl";
+import { ScanControl } from "./components/ScanControl";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { SlotEditor } from "./components/SlotEditor";
+import { forgetLabels } from "./lib/scanner";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
 import { useStashScanner } from "./lib/useStashScanner";
-import { loadSnapshot, saveSnapshot } from "./lib/snapshot";
+import { clearSnapshot, loadSnapshot, revalue, saveSnapshot } from "./lib/snapshot";
 import { loadCurrency, saveCurrency, usable, type Currency, type Rates } from "./lib/currency";
-import { CATEGORIES, type Category, type Snapshot } from "./lib/types";
+import { CATEGORIES, type Category, type Snapshot, type SnapshotItem } from "./lib/types";
 import "./styles.css";
 
 export default function App() {
@@ -28,7 +32,41 @@ export default function App() {
   const [filter, setFilter] = useState<CategoryFilter>("All");
   const updater = useUpdater();
   const scanner = useStashScanner(onSnapshot);
-  const [view, setView] = useState<"snapshot" | "scanner">("snapshot");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editing, setEditing] = useState<SnapshotItem | null>(null);
+
+  // Nouveaux prix (actualisation, autre ligue) sans onglet lu depuis le lancement :
+  // le snapshot enregistré est revalorisé, sans ajouter de point à la courbe.
+  const { prices, tabs } = scanner;
+  useEffect(() => {
+    if (!prices || tabs.length > 0) return;
+    setSnapshot((s) => {
+      if (!s) return s;
+      const next = revalue(s, prices);
+      saveSnapshot(next);
+      return next;
+    });
+  }, [prices, tabs.length]);
+
+  const resetHistory = useCallback(() => {
+    if (snapshot) clearHistory(snapshot.league).then(setHistory).catch(() => {});
+  }, [snapshot]);
+
+  const resetAll = useCallback(async () => {
+    setSnapshot(null);
+    clearSnapshot();
+    setFilter("All");
+    await scanner.restart();
+    await Promise.all([clearHistory(null).then(setHistory), forgetLabels()]).catch(() => {});
+    setSettingsOpen(false);
+  }, [scanner]);
+
+  // Case d'origine d'un objet, tant que son onglet a été lu pendant cette session.
+  const slotOf = (item: SnapshotItem) => {
+    const src = item.source;
+    return src ? tabs[src.tab]?.scan.slots.find((s) => s.x === src.x && s.y === src.y) : undefined;
+  };
+  const editingSlot = editing ? slotOf(editing) : undefined;
   const [chosenCurrency, setChosenCurrency] = useState<Currency>(loadCurrency);
   const pickCurrency = useCallback((c: Currency) => {
     setChosenCurrency(c);
@@ -66,26 +104,46 @@ export default function App() {
   return (
     <div className="app">
       <UpdateBanner updater={updater} />
-      <nav className="tabs">
-        <button type="button" className={view === "snapshot" ? "active" : ""} onClick={() => setView("snapshot")}>
-          Snapshot
-        </button>
-        <button type="button" className={view === "scanner" ? "active" : ""} onClick={() => setView("scanner")}>
-          Scanner
-        </button>
-        <UpdateCheck updater={updater} />
-        <CurrencySelect value={currency} onChange={pickCurrency} chaosAvailable={!!rates.chaosPerDivine} />
+      <nav className="topbar">
+        <ScanControl scanner={scanner} />
+        <div className="topbar-right">
+          <PricesControl scanner={scanner} />
+          <UpdateCheck updater={updater} />
+          <CurrencySelect value={currency} onChange={pickCurrency} chaosAvailable={!!rates.chaosPerDivine} />
+          <button type="button" className="ghost" onClick={() => setSettingsOpen((o) => !o)}>
+            Réglages
+          </button>
+        </div>
       </nav>
-      {view === "scanner" ? (
-        <main className="content">
-          <ScannerView scanner={scanner} currency={chosenCurrency} />
-        </main>
-      ) : !snapshot ? (
+      {settingsOpen && (
+        <SettingsPanel
+          scanner={scanner}
+          onResetHistory={resetHistory}
+          onResetAll={resetAll}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {editing && editingSlot && scanner.prices && (
+        <SlotEditor
+          slot={editingSlot}
+          prices={scanner.prices}
+          onPick={(id) => {
+            scanner.relabel(editingSlot, id).catch(() => {});
+            setEditing(null);
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {!snapshot ? (
         <main className="content empty-state">
           <p>Aucun snapshot pour l'instant.</p>
-          <button type="button" className="primary" onClick={() => setView("scanner")}>
-            Scanner mon coffre
-          </button>
+          {scanner.auto ? (
+            <p className="muted">Ouvre ton coffre dans le jeu : chaque onglet affiché est lu automatiquement.</p>
+          ) : (
+            <button type="button" className="primary" onClick={() => scanner.setAuto(true)}>
+              Activer le scan
+            </button>
+          )}
         </main>
       ) : (
         <>
@@ -93,8 +151,20 @@ export default function App() {
           <div className="body">
             <CategorySidebar selected={filter} totals={totals} onSelect={setFilter} currency={currency} rates={rates} />
             <main className="content">
-              <NetWorthChart history={history} league={snapshot.league} currency={currency} rates={rates} />
-              <ItemGrid items={visible} currency={currency} rates={rates} />
+              <NetWorthChart
+                history={history}
+                league={snapshot.league}
+                currency={currency}
+                rates={rates}
+                onReset={resetHistory}
+              />
+              <ItemGrid
+                items={visible}
+                currency={currency}
+                rates={rates}
+                onEdit={(item) => slotOf(item) && setEditing(item)}
+                canEdit={(item) => !!slotOf(item)}
+              />
             </main>
           </div>
         </>

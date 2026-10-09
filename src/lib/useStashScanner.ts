@@ -4,119 +4,117 @@ import { buildSnapshot } from "./snapshot";
 import { mergeScan, type TabScan } from "./stashTabs";
 import {
   autoScan,
-  captureGame,
   getPrices,
   labelSlot,
-  loadRegion,
+  refreshPrices,
   resetAutoScan,
-  saveRegion,
-  scanRegion,
-  type CapturePreview,
+  setLeague,
   type PriceFile,
-  type Region,
-  type ScanResult,
+  type ScannedSlot,
 } from "./scanner";
 import type { Snapshot } from "./types";
 
 /** Délai entre deux tours du scan automatique. */
 const AUTO_INTERVAL_MS = 1200;
+const AUTO_KEY = "autoScan";
+
+function loadAuto(): boolean {
+  try {
+    return localStorage.getItem(AUTO_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 /**
- * Moteur du scanner, monté au niveau de l'app pour que le scan automatique continue
- * quand on regarde l'onglet Snapshot.
+ * Moteur du scan : lit le coffre à sa place fixe dans la fenêtre du jeu, dès qu'il change,
+ * et tient à jour les prix.
  */
 export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
-  const [preview, setPreview] = useState<CapturePreview | null>(null);
-  const [region, setRegionState] = useState<Region | null>(loadRegion);
-  const [result, setResult] = useState<ScanResult | null>(null);
   const [tabs, setTabs] = useState<TabScan[]>([]);
   const [prices, setPrices] = useState<PriceFile | null>(null);
-  const [auto, setAuto] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [auto, setAutoState] = useState(loadAuto);
+  /** `false` quand le dernier tour n'a pas trouvé de coffre ouvert. */
+  const [stashOpen, setStashOpen] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pricesBusy, setPricesBusy] = useState(false);
   const [lastAutoScan, setLastAutoScan] = useState<Date | null>(null);
 
-  const accept = useCallback((scan: ScanResult) => {
-    setResult(scan);
-    setTabs((t) => mergeScan(t, scan));
+  const setAuto = useCallback((on: boolean) => {
+    setAutoState(on);
+    try {
+      localStorage.setItem(AUTO_KEY, on ? "on" : "off");
+    } catch {
+      // Stockage indisponible : le choix vaut pour la session.
+    }
   }, []);
-
-  // Le snapshot couvre tous les onglets vus depuis le dernier « Recommencer ».
-  useEffect(() => {
-    if (prices && tabs.length > 0) onSnapshot(buildSnapshot(tabs.map((t) => t.scan), prices));
-  }, [tabs, prices, onSnapshot]);
 
   // Prix chargés dès le démarrage : taux de change (Chaos…) disponibles même sans nouveau scan.
   useEffect(() => {
     if (isTauri()) getPrices().then((p) => setPrices((cur) => cur ?? p)).catch(() => {});
   }, []);
 
-  const ensurePrices = useCallback(async () => {
-    if (!prices) setPrices(await getPrices());
-  }, [prices]);
+  // Le snapshot couvre tous les onglets vus depuis le lancement (ou la remise à zéro).
+  useEffect(() => {
+    if (prices && tabs.length > 0) onSnapshot(buildSnapshot(tabs.map((t) => t.scan), prices));
+  }, [tabs, prices, onSnapshot]);
 
-  async function run<T>(task: () => Promise<T>): Promise<T | undefined> {
-    setBusy(true);
+  // Stable : la boucle de scan ne redémarre pas quand les prix arrivent.
+  const pricesRef = useRef(prices);
+  pricesRef.current = prices;
+  const ensurePrices = useCallback(async () => {
+    if (!pricesRef.current) setPrices(await getPrices());
+  }, []);
+
+  async function updatePrices(load: () => Promise<PriceFile>) {
+    setPricesBusy(true);
     setError(null);
     try {
-      return await task();
+      setPrices(await load());
     } catch (err) {
       setError(String(err));
     } finally {
-      setBusy(false);
+      setPricesBusy(false);
     }
   }
 
-  async function scan(r: Region) {
-    const res = await run(() => scanRegion(r));
-    if (!res) return;
-    accept(res);
-    if (!res.identifyError) await run(ensurePrices);
-  }
-
-  async function capture() {
-    const p = await run(captureGame);
-    if (!p) return;
-    setPreview(p);
-    if (region) await scan(region);
-  }
-
-  async function setRegion(r: Region) {
-    setRegionState(r);
-    saveRegion(r);
-    await run(resetAutoScan);
-    await scan(r);
-  }
-
-  async function pick(index: number, itemId: string) {
-    if (!result) return;
-    await run(() => labelSlot(result.slots[index].descriptor, itemId));
-    const slots = result.slots.map((s, i) =>
-      i === index ? { ...s, identification: { source: "memory" as const, candidates: [{ itemId, distance: 0 }] } } : s,
+  /** Corrige l'objet d'une case ; l'app s'en souviendra aux prochains scans. */
+  async function relabel(slot: ScannedSlot, itemId: string) {
+    await labelSlot(slot.descriptor, itemId);
+    const fixed = { source: "memory" as const, candidates: [{ itemId, distance: 0 }] };
+    setTabs((ts) =>
+      ts.map((t) => ({
+        ...t,
+        scan: {
+          ...t.scan,
+          slots: t.scan.slots.map((s) => (s.descriptor === slot.descriptor ? { ...s, identification: fixed } : s)),
+        },
+      })),
     );
-    accept({ ...result, slots });
   }
 
   async function restart() {
     setTabs([]);
-    setResult(null);
-    await run(resetAutoScan);
+    await resetAutoScan().catch(() => {});
   }
 
   // Boucle du scan automatique : un tour à la fois, jamais deux captures en parallèle.
   const autoRef = useRef(auto);
   autoRef.current = auto;
   useEffect(() => {
-    if (!auto || !region) return;
+    if (!auto || !isTauri()) return;
     let stopped = false;
     (async () => {
       while (!stopped && autoRef.current) {
         try {
-          const res = await autoScan(region);
+          const res = await autoScan();
           if (res.status === "scanned") {
-            accept(res.scan);
+            setTabs((t) => mergeScan(t, res.scan));
+            setStashOpen(true);
             setLastAutoScan(new Date());
             if (!res.scan.identifyError) await ensurePrices();
+          } else if (res.status === "noStash") {
+            setStashOpen(false);
           }
           setError(null);
         } catch (err) {
@@ -128,11 +126,21 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     return () => {
       stopped = true;
     };
-  }, [auto, region, accept, ensurePrices]);
+  }, [auto, ensurePrices]);
 
   return {
-    preview, region, result, tabs, prices, auto, busy, error, lastAutoScan,
-    capture, setRegion, pick, restart, setAuto,
+    tabs,
+    prices,
+    auto,
+    stashOpen,
+    error,
+    pricesBusy,
+    lastAutoScan,
+    setAuto,
+    relabel,
+    restart,
+    refreshPrices: () => updatePrices(refreshPrices),
+    changeLeague: (league: string | null) => updatePrices(() => setLeague(league)),
   };
 }
 

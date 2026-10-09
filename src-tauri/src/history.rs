@@ -51,6 +51,36 @@ pub async fn load_history(app: tauri::AppHandle, state: tauri::State<'_, History
     read(&app).await
 }
 
+/// Efface l'historique d'une ligue, ou tout l'historique sans ligue.
+#[tauri::command]
+pub async fn clear_history(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, HistoryState>,
+    league: Option<String>,
+) -> Result<Vec<HistoryPoint>, String> {
+    let _guard = state.0.lock().await;
+    let mut points = read(&app).await?;
+    match league {
+        Some(l) => points.retain(|p| p.league != l),
+        None => points.clear(),
+    }
+    write(&app, &points).await?;
+    Ok(points)
+}
+
+async fn write(app: &tauri::AppHandle, points: &[HistoryPoint]) -> Result<(), String> {
+    let file = path(app)?;
+    if let Some(dir) = file.parent() {
+        tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
+    }
+    // Écriture atomique : fichier temporaire puis renommage.
+    let tmp = file.with_extension("json.tmp");
+    tokio::fs::write(&tmp, serde_json::to_vec(points).map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::rename(&tmp, &file).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn record_history(
     app: tauri::AppHandle,
@@ -60,16 +90,7 @@ pub async fn record_history(
     let _guard = state.0.lock().await;
     let mut points = read(&app).await?;
     push(&mut points, point);
-    let file = path(&app)?;
-    if let Some(dir) = file.parent() {
-        tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
-    }
-    // Écriture atomique : fichier temporaire puis renommage.
-    let tmp = file.with_extension("json.tmp");
-    tokio::fs::write(&tmp, serde_json::to_vec(&points).map_err(|e| e.to_string())?)
-        .await
-        .map_err(|e| e.to_string())?;
-    tokio::fs::rename(&tmp, &file).await.map_err(|e| e.to_string())?;
+    write(&app, &points).await?;
     Ok(points)
 }
 

@@ -1,20 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export interface CapturePreview {
-  width: number;
-  height: number;
-  method: "wgc" | "gdi";
-  pngBase64: string;
-}
-
-/** Zone du coffre en fractions de l'image (0..1). */
-export interface Region {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export interface Candidate {
   itemId: string;
   distance: number;
@@ -61,18 +46,29 @@ export interface ScanResult {
   identifyError: string | null;
 }
 
-export const captureGame = () => invoke<CapturePreview>("capture_game");
-export const scanRegion = (region: Region) => invoke<ScanResult>("scan_region", { region });
 export type AutoScanResult =
   | { status: "unchanged" }
   | { status: "changing" }
+  | { status: "noStash" }
   | { status: "scanned"; scan: ScanResult };
 
-export const autoScan = (region: Region) => invoke<AutoScanResult>("auto_scan", { region });
+/** Un tour de scan automatique sur la zone fixe du coffre. */
+export const autoScan = () => invoke<AutoScanResult>("auto_scan", { region: null });
 export const resetAutoScan = () => invoke<void>("reset_auto_scan");
 export const getPrices = () => invoke<PriceFile>("get_prices");
+export const refreshPrices = () => invoke<PriceFile>("refresh_prices");
 export const labelSlot = (descriptor: string, itemId: string) =>
   invoke<void>("label_slot", { descriptor, itemId });
+export const forgetLabels = () => invoke<void>("forget_labels");
+
+export interface League {
+  id: string;
+  name: string;
+}
+
+/** Ligues disponibles et ligue choisie (`null` = ligue en cours). */
+export const listLeagues = () => invoke<{ leagues: League[]; selected: string | null }>("list_leagues");
+export const setLeague = (league: string | null) => invoke<PriceFile>("set_league", { league });
 
 /** Au-delà, la suggestion poe.ninja est jugée trop incertaine pour être comptée. */
 export const NINJA_MAX_DISTANCE = 0.12;
@@ -83,23 +79,4 @@ export function chosenItem(slot: ScannedSlot): { itemId: string; confirmed: bool
   if (!best) return null;
   if (slot.identification!.source === "memory") return { itemId: best.itemId, confirmed: true };
   return best.distance <= NINJA_MAX_DISTANCE ? { itemId: best.itemId, confirmed: false } : null;
-}
-
-const REGION_KEY = "stashRegion";
-
-export function loadRegion(): Region | null {
-  try {
-    const raw = localStorage.getItem(REGION_KEY);
-    return raw ? (JSON.parse(raw) as Region) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveRegion(region: Region): void {
-  try {
-    localStorage.setItem(REGION_KEY, JSON.stringify(region));
-  } catch {
-    // Stockage indisponible : la zone sera redemandée.
-  }
 }
