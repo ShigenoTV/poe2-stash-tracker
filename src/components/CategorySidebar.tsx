@@ -1,5 +1,5 @@
 import { formatValue } from "../lib/format";
-import { CATEGORIES, type Category } from "../lib/types";
+import { CATEGORIES, CATEGORY_LABEL, type Category } from "../lib/types";
 
 export type CategoryFilter = Category | "All";
 
@@ -12,7 +12,7 @@ interface Props {
 export function CategorySidebar({ selected, totals, onSelect }: Props) {
   const entries: { key: CategoryFilter; label: string; value: number }[] = [
     { key: "All", label: "Tout", value: Object.values(totals).reduce((a, b) => a + b, 0) },
-    ...CATEGORIES.map((c) => ({ key: c, label: c, value: totals[c] })),
+    ...CATEGORIES.map((c) => ({ key: c, label: CATEGORY_LABEL[c], value: totals[c] })),
   ];
   return (
     <nav className="sidebar" aria-label="Catégories">

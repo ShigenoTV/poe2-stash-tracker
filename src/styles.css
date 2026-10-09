@@ -73,9 +73,9 @@ button { font: inherit; color: inherit; }
 }
 .item-tile:hover { border-color: var(--accent); }
 .item-icon { width: 78%; height: 78%; object-fit: contain; }
-.item-glyph {
-  width: 62%; height: 62%; border-radius: 50%; display: grid; place-items: center;
-  font-size: 13px; font-weight: 700; color: #0d0d0f; background: var(--muted);
+.item-name {
+  padding: 18px 4px 4px; font-size: 10px; line-height: 1.2; text-align: center; color: var(--muted);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
 }
 .item-qty {
   position: absolute; top: 3px; left: 5px; font-size: 13px; font-weight: 700;
@@ -92,6 +92,9 @@ button { font: inherit; color: inherit; }
 .cat-delirium { background: var(--cat-delirium); }
 .cat-socketable { background: var(--cat-socketable); }
 .cat-ritual { background: var(--cat-ritual); }
+.cat-fragment { background: #a58fd1; }
+.cat-other { background: #6c6a66; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); }
 
 .tabs { display: flex; gap: 4px; padding: 6px 16px 0; background: var(--panel); }
 .tabs button {

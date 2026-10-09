@@ -1,20 +1,56 @@
 export const CATEGORIES = [
   "Currency",
+  "Fragment",
   "Essence",
   "Delirium",
   "Socketable",
   "Ritual",
+  "Other",
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+
+export const CATEGORY_LABEL: Record<Category, string> = {
+  Currency: "Currency",
+  Fragment: "Fragment",
+  Essence: "Essence",
+  Delirium: "Delirium",
+  Socketable: "Socketable",
+  Ritual: "Ritual",
+  Other: "Autres",
+};
+
+/** Catégorie d'affichage à partir du type d'overview poe.ninja. */
+export function categoryOf(ninjaType: string): Category {
+  switch (ninjaType) {
+    case "Currency":
+      return "Currency";
+    case "Fragments":
+    case "Breach":
+      return "Fragment";
+    case "Essences":
+      return "Essence";
+    case "Delirium":
+      return "Delirium";
+    case "Runes":
+    case "SoulCores":
+    case "Idols":
+      return "Socketable";
+    case "Ritual":
+      return "Ritual";
+    default:
+      return "Other";
+  }
+}
 
 export interface SnapshotItem {
   id: string;
   name: string;
   category: Category;
   quantity: number;
-  /** Prix unitaire en Exalted Orbs, `null` si poe.ninja ne le connaît pas. */
+  /** Prix unitaire en Exalted Orbs, `null` si l'objet n'est pas identifié ou sans prix. */
   unitExalted: number | null;
+  /** URL de l'icône (poe.ninja) ou image capturée en data URI. */
   icon?: string;
 }
 

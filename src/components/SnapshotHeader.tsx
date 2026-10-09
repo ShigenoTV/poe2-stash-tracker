@@ -18,9 +18,6 @@ export function SnapshotHeader({ snapshot, totalExalted }: Props) {
         <div className="networth-main">{formatValue(totalDivine)} div</div>
         <div className="networth-sub">{formatValue(totalExalted)} ex</div>
       </div>
-      <button type="button" className="primary" disabled title="Disponible à l'étape Acquisition">
-        Nouveau snapshot
-      </button>
     </header>
   );
 }

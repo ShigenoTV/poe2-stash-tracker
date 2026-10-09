@@ -1,21 +1,25 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
 import { ItemGrid } from "./components/ItemGrid";
 import { ScannerView } from "./components/ScannerView";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { mockSnapshot } from "./lib/mockData";
-import { CATEGORIES, type Category } from "./lib/types";
+import { loadSnapshot, saveSnapshot } from "./lib/snapshot";
+import { CATEGORIES, type Category, type Snapshot } from "./lib/types";
 import "./styles.css";
 
 export default function App() {
-  const snapshot = mockSnapshot;
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(loadSnapshot);
+  const onSnapshot = useCallback((s: Snapshot) => {
+    setSnapshot(s);
+    saveSnapshot(s);
+  }, []);
   const [filter, setFilter] = useState<CategoryFilter>("All");
   const [view, setView] = useState<"snapshot" | "scanner">("snapshot");
 
   const totals = useMemo(() => {
     const t = Object.fromEntries(CATEGORIES.map((c) => [c, 0])) as Record<Category, number>;
-    for (const item of snapshot.items) {
+    for (const item of snapshot?.items ?? []) {
       t[item.category] += (item.unitExalted ?? 0) * item.quantity;
     }
     return t;
@@ -25,7 +29,7 @@ export default function App() {
 
   const visible = useMemo(
     () =>
-      snapshot.items
+      (snapshot?.items ?? [])
         .filter((i) => filter === "All" || i.category === filter)
         .sort((a, b) => (b.unitExalted ?? 0) * b.quantity - (a.unitExalted ?? 0) * a.quantity),
     [snapshot, filter],
@@ -44,7 +48,14 @@ export default function App() {
       </nav>
       {view === "scanner" ? (
         <main className="content">
-          <ScannerView />
+          <ScannerView onSnapshot={onSnapshot} />
+        </main>
+      ) : !snapshot ? (
+        <main className="content empty-state">
+          <p>Aucun snapshot pour l'instant.</p>
+          <button type="button" className="primary" onClick={() => setView("scanner")}>
+            Scanner mon coffre
+          </button>
         </main>
       ) : (
         <>

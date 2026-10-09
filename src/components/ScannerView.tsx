@@ -1,4 +1,6 @@
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { buildSnapshot } from "../lib/snapshot";
+import type { Snapshot } from "../lib/types";
 import { compactQuantity, formatValue } from "../lib/format";
 import { SlotEditor } from "./SlotEditor";
 import {
@@ -17,7 +19,7 @@ import {
 
 const METHOD_LABEL = { wgc: "GPU (Windows Graphics Capture)", gdi: "GDI (repli)" };
 
-export function ScannerView() {
+export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void }) {
   const [preview, setPreview] = useState<CapturePreview | null>(null);
   const [region, setRegion] = useState<Region | null>(loadRegion);
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -25,6 +27,10 @@ export function ScannerView() {
   const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (result && prices && !result.identifyError) onSnapshot(buildSnapshot(result, prices));
+  }, [result, prices, onSnapshot]);
+
   const drag = useRef<{ x: number; y: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
 
