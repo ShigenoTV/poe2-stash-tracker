@@ -14,9 +14,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(scan::LastCapture::default())
         .manage(library::LibraryState::default())
+        .manage(scan::AutoScanState::default())
         .invoke_handler(tauri::generate_handler![
             scan::capture_game,
             scan::scan_region,
+            scan::auto_scan,
+            scan::reset_auto_scan,
             library::get_prices,
             library::label_slot
         ]);

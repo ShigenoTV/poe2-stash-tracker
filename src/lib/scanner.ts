@@ -63,6 +63,13 @@ export interface ScanResult {
 
 export const captureGame = () => invoke<CapturePreview>("capture_game");
 export const scanRegion = (region: Region) => invoke<ScanResult>("scan_region", { region });
+export type AutoScanResult =
+  | { status: "unchanged" }
+  | { status: "changing" }
+  | { status: "scanned"; scan: ScanResult };
+
+export const autoScan = (region: Region) => invoke<AutoScanResult>("auto_scan", { region });
+export const resetAutoScan = () => invoke<void>("reset_auto_scan");
 export const getPrices = () => invoke<PriceFile>("get_prices");
 export const labelSlot = (descriptor: string, itemId: string) =>
   invoke<void>("label_slot", { descriptor, itemId });

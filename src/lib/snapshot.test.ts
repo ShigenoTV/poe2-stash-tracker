@@ -26,7 +26,7 @@ describe("buildSnapshot", () => {
       identifyError: null,
       slots: [slot(0, 100, "simulacrum-splinter"), slot(80, 50, "simulacrum-splinter", "ninja")],
     };
-    const snap = buildSnapshot(scan, prices, new Date("2026-10-09T15:00:00Z"));
+    const snap = buildSnapshot([scan], prices, new Date("2026-10-09T15:00:00Z"));
     expect(snap.items).toHaveLength(1);
     expect(snap.items[0]).toMatchObject({ quantity: 150, category: "Fragment", icon: "https://web.poecdn.com/s.png" });
     expect(snap.items[0].unitExalted).toBeCloseTo(0.0058 * 771);
@@ -34,7 +34,7 @@ describe("buildSnapshot", () => {
 
   it("garde les cases non identifiées sans valeur, avec l'icône capturée", () => {
     const scan: ScanResult = { slotSide: 70, identifyError: null, slots: [slot(0, 3, null), slot(80, null, null)] };
-    const snap = buildSnapshot(scan, prices);
+    const snap = buildSnapshot([scan], prices);
     expect(snap.items).toEqual([
       expect.objectContaining({ quantity: 3, unitExalted: null, icon: "data:image/png;base64,AAA" }),
     ]);

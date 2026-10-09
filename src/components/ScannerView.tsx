@@ -1,74 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { buildSnapshot } from "../lib/snapshot";
-import type { Snapshot } from "../lib/types";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import type { StashScanner } from "../lib/useStashScanner";
 import { compactQuantity, formatValue } from "../lib/format";
 import { SlotEditor } from "./SlotEditor";
-import {
-  captureGame,
-  chosenItem,
-  getPrices,
-  labelSlot,
-  loadRegion,
-  saveRegion,
-  scanRegion,
-  type CapturePreview,
-  type PriceFile,
-  type Region,
-  type ScanResult,
-} from "../lib/scanner";
+import { chosenItem, type Region } from "../lib/scanner";
 
 const METHOD_LABEL = { wgc: "GPU (Windows Graphics Capture)", gdi: "GDI (repli)" };
 
-export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void }) {
-  const [preview, setPreview] = useState<CapturePreview | null>(null);
-  const [region, setRegion] = useState<Region | null>(loadRegion);
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [prices, setPrices] = useState<PriceFile | null>(null);
+export function ScannerView({ scanner }: { scanner: StashScanner }) {
+  const { preview, region, result, tabs, prices, auto, busy, error, lastAutoScan } = scanner;
+  const [draft, setDraft] = useState<Region | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (result && prices && !result.identifyError) onSnapshot(buildSnapshot(result, prices));
-  }, [result, prices, onSnapshot]);
-
   const drag = useRef<{ x: number; y: number } | null>(null);
   const frame = useRef<HTMLDivElement>(null);
-
-  async function run<T>(task: () => Promise<T>): Promise<T | undefined> {
-    setBusy(true);
-    setError(null);
-    try {
-      return await task();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function scan(r: Region) {
-    const res = await run(() => scanRegion(r));
-    setResult(res ?? null);
-    if (res && !res.identifyError && !prices) setPrices((await run(getPrices)) ?? null);
-  }
-
-  async function pick(index: number, itemId: string) {
-    const slot = result!.slots[index];
-    await run(() => labelSlot(slot.descriptor, itemId));
-    const slots = result!.slots.map((s, i) =>
-      i === index ? { ...s, identification: { source: "memory" as const, candidates: [{ itemId, distance: 0 }] } } : s,
-    );
-    setResult({ ...result!, slots });
-    setEditing(null);
-  }
-
-  async function capture() {
-    const p = await run(captureGame);
-    if (!p) return;
-    setPreview(p);
-    setResult(null);
-    if (region) await scan(region);
-  }
+  const shown = draft ?? region;
 
   function point(e: PointerEvent): { x: number; y: number } {
     const box = frame.current!.getBoundingClientRect();
@@ -87,15 +31,14 @@ export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void 
     if (!drag.current) return;
     const p = point(e);
     const s = drag.current;
-    setRegion({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+    setDraft({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
   }
 
   async function onUp() {
     drag.current = null;
-    if (region && region.w > 0.02 && region.h > 0.02) {
-      saveRegion(region);
-      await scan(region);
-    }
+    const r = draft;
+    setDraft(null);
+    if (r && r.w > 0.02 && r.h > 0.02) await scanner.setRegion(r);
   }
 
   const read = result?.slots.filter((s) => s.quantity !== null).length ?? 0;
@@ -114,9 +57,29 @@ export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void 
   return (
     <div className="scanner">
       <div className="scanner-bar">
-        <button type="button" className="primary" onClick={capture} disabled={busy}>
+        <button type="button" className="primary" onClick={scanner.capture} disabled={busy}>
           {busy ? "…" : "Capturer le jeu"}
         </button>
+        <label className="auto-toggle" title={region ? undefined : "Encadre d'abord le coffre"}>
+          <input
+            type="checkbox"
+            checked={auto}
+            disabled={!region}
+            onChange={(e) => scanner.setAuto(e.target.checked)}
+          />
+          Scan automatique
+        </label>
+        {tabs.length > 0 && (
+          <>
+            <span className="muted">
+              {tabs.length} onglet{tabs.length > 1 ? "s" : ""} dans le snapshot
+              {auto && lastAutoScan && ` · dernier scan ${lastAutoScan.toLocaleTimeString("fr-FR")}`}
+            </span>
+            <button type="button" className="ghost" onClick={scanner.restart}>
+              Recommencer
+            </button>
+          </>
+        )}
         {preview && (
           <span className="muted">
             {preview.width}×{preview.height} · {METHOD_LABEL[preview.method]}
@@ -138,14 +101,14 @@ export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void 
             onPointerUp={onUp}
           >
             <img src={`data:image/png;base64,${preview.pngBase64}`} alt="Capture du jeu" draggable={false} />
-            {region && (
+            {shown && (
               <div
                 className="capture-region"
                 style={{
-                  left: `${region.x * 100}%`,
-                  top: `${region.y * 100}%`,
-                  width: `${region.w * 100}%`,
-                  height: `${region.h * 100}%`,
+                  left: `${shown.x * 100}%`,
+                  top: `${shown.y * 100}%`,
+                  width: `${shown.w * 100}%`,
+                  height: `${shown.h * 100}%`,
                 }}
               />
             )}
@@ -197,7 +160,10 @@ export function ScannerView({ onSnapshot }: { onSnapshot: (s: Snapshot) => void 
             <SlotEditor
               slot={result.slots[editing]}
               prices={prices}
-              onPick={(id) => pick(editing, id)}
+              onPick={(id) => {
+                scanner.pick(editing, id);
+                setEditing(null);
+              }}
               onClose={() => setEditing(null)}
             />
           )}

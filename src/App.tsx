@@ -5,6 +5,7 @@ import { ScannerView } from "./components/ScannerView";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
+import { useStashScanner } from "./lib/useStashScanner";
 import { loadSnapshot, saveSnapshot } from "./lib/snapshot";
 import { CATEGORIES, type Category, type Snapshot } from "./lib/types";
 import "./styles.css";
@@ -17,6 +18,7 @@ export default function App() {
   }, []);
   const [filter, setFilter] = useState<CategoryFilter>("All");
   const updater = useUpdater();
+  const scanner = useStashScanner(onSnapshot);
   const [view, setView] = useState<"snapshot" | "scanner">("snapshot");
 
   const totals = useMemo(() => {
@@ -51,7 +53,7 @@ export default function App() {
       </nav>
       {view === "scanner" ? (
         <main className="content">
-          <ScannerView onSnapshot={onSnapshot} />
+          <ScannerView scanner={scanner} />
         </main>
       ) : !snapshot ? (
         <main className="content empty-state">

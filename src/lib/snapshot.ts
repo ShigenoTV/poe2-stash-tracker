@@ -2,18 +2,19 @@ import { chosenItem, type PriceFile, type ScanResult } from "./scanner";
 import { categoryOf, type Snapshot, type SnapshotItem } from "./types";
 
 /** Regroupe les cases scannées par objet et les valorise avec le fichier de prix. */
-export function buildSnapshot(scan: ScanResult, prices: PriceFile, takenAt = new Date()): Snapshot {
+export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = new Date()): Snapshot {
   const exaltedPerDivine = prices.rates.exalted ?? 1;
   const byId = new Map(prices.items.map((i) => [i.id, i]));
   const items = new Map<string, SnapshotItem>();
 
-  for (const slot of scan.slots) {
+  const slots = scans.flatMap((scan, tab) => scan.slots.map((slot) => ({ slot, tab })));
+  for (const { slot, tab } of slots) {
     if (slot.quantity === null) continue;
     const chosen = chosenItem(slot);
     const priced = chosen ? byId.get(chosen.itemId) : undefined;
     if (!priced) {
       // Objet non identifié : gardé avec l'icône capturée, sans valeur.
-      const id = `unknown-${slot.x}-${slot.y}`;
+      const id = `unknown-${tab}-${slot.x}-${slot.y}`;
       items.set(id, {
         id,
         name: "Objet non identifié",
