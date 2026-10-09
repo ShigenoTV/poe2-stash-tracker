@@ -31,3 +31,37 @@ describe("mergeScan", () => {
     expect(mergeScan(tabs, scan(fragments.slice(0, 3)))).toBe(tabs);
   });
 });
+
+function identified(positions: [number, number][], items: string[], dx = 0, dy = 0): ScanResult {
+  const s = scan(positions.map(([x, y]) => [x + dx, y + dy]));
+  s.slots.forEach((slot, i) => {
+    slot.quantity = 10 + i;
+    slot.identification = { source: "ninja", candidates: [{ itemId: items[i], distance: 0.01 }] };
+  });
+  return s;
+}
+
+describe("mergeScan : décalage et contenu", () => {
+  const items = ["divine", "chaos", "greater-chaos", "key", "exalted", "regal"];
+
+  it("reconnaît le même onglet décalé en bloc", () => {
+    let tabs = mergeScan([], identified(fragments, items));
+    tabs = mergeScan(tabs, identified(fragments, items, 30, 22));
+    expect(tabs).toHaveLength(1);
+  });
+
+  it("garde séparés deux onglets aux mêmes places mais aux objets différents", () => {
+    let tabs = mergeScan([], identified(fragments, items));
+    tabs = mergeScan(tabs, identified(fragments, ["a", "b", "c", "d", "e", "f"]));
+    expect(tabs).toHaveLength(2);
+  });
+
+  it("fusionne un doublon déjà présent", () => {
+    const dup = [
+      { id: 1, scan: identified(fragments, items) },
+      { id: 2, scan: identified(fragments, items, 30, 22) },
+    ];
+    const tabs = mergeScan(dup, identified(fragments, items, 30, 22));
+    expect(tabs).toHaveLength(1);
+  });
+});
