@@ -37,7 +37,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2RjA5MDdBQTczNzgyMjUKUldRbGdqZW5lcER3OWdzY0lCeVBGS3pmZVBMQmdCQzJQRW4zUTdxTS9YZ0R2RldPNi94Wi9NOEoK",
       "endpoints": [
         "https://github.com/ShigenoTV/poe2-stash-tracker/releases/latest/download/latest.json"
       ],
