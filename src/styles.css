@@ -92,3 +92,21 @@ button { font: inherit; color: inherit; }
 .cat-delirium { background: var(--cat-delirium); }
 .cat-socketable { background: var(--cat-socketable); }
 .cat-ritual { background: var(--cat-ritual); }
+
+.tabs { display: flex; gap: 4px; padding: 6px 16px 0; background: var(--panel); }
+.tabs button {
+  background: none; border: 0; padding: 8px 14px; cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.muted { color: var(--muted); }
+.scanner { display: flex; flex-direction: column; gap: 12px; }
+.scanner-bar { display: flex; align-items: center; gap: 16px; }
+.scanner-title { font-size: 16px; margin: 8px 0 0; }
+.capture-frame { position: relative; max-width: 100%; cursor: crosshair; user-select: none; touch-action: none; }
+.capture-frame img { display: block; width: 100%; }
+.capture-region {
+  position: absolute; border: 2px solid var(--accent); background: rgba(200, 164, 90, 0.12);
+  pointer-events: none;
+}
