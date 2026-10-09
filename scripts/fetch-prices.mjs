@@ -95,6 +95,34 @@ async function fetchLeague(league) {
   return { league, fetchedAt: new Date().toISOString(), primary: primary ?? "divine", rates, items };
 }
 
+/** Nom de fichier stable d'une icône : `<hash>-<nom>.png`, tiré de son URL poecdn. */
+export function iconFile(url) {
+  const parts = new URL(url).pathname.split("/").filter(Boolean);
+  return parts.slice(-2).join("-");
+}
+
+/**
+ * Copie les icônes sur la branche prices : elles servent à tester la reconnaissance hors de
+ * Windows (le CDN du jeu n'est pas joignable partout) et pourront servir de miroir à l'app.
+ */
+async function mirrorIcons(outDir, urls) {
+  const dir = join(outDir, "icons");
+  await mkdir(dir, { recursive: true });
+  let ok = 0;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+      if (!res.ok) throw new Error(`${res.status}`);
+      await writeFile(join(dir, iconFile(url)), Buffer.from(await res.arrayBuffer()));
+      ok++;
+    } catch (err) {
+      console.warn(`Icône ${url} ignorée : ${err.message}`);
+    }
+    await sleep(50);
+  }
+  console.log(`${ok}/${urls.length} icônes copiées`);
+}
+
 async function main() {
   const outDir = process.argv[2] ?? "out";
   const forced = process.env.LEAGUES?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -103,8 +131,10 @@ async function main() {
     : await getJson(`${BASE}/leagues`);
 
   const index = [];
+  const icons = new Set();
   for (const { id, name } of leagues) {
     const file = await fetchLeague(id);
+    for (const item of file.items) if (item.icon) icons.add(item.icon);
     if (file.items.length === 0) {
       console.warn(`[${id}] aucun prix, ligue ignorée`);
       continue;
@@ -116,6 +146,7 @@ async function main() {
     console.log(`[${id}] ${file.items.length} prix`);
   }
   if (index.length === 0) throw new Error("Aucune ligue récupérée");
+  await mirrorIcons(outDir, [...icons]);
   await writeFile(join(outDir, "leagues.json"), JSON.stringify({ updatedAt: new Date().toISOString(), leagues: index }, null, 2));
 }
 
