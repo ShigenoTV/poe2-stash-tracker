@@ -268,6 +268,33 @@ pub fn read_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
     [read(false), read(true)].into_iter().flatten().max_by_key(|d| d.len())?.parse().ok()
 }
 
+/// Palier de l'objet d'après la marque en bas à droite de la case : 2 pour « II » (Greater),
+/// 3 pour « III » (Perfect), 0 sans marque. Chaque barre est un trait blanc vertical et fin.
+pub fn tier_mark(img: &RgbImage, slot: &Rect, side: u32) -> u8 {
+    let x0 = slot.x + slot.w / 2;
+    let y0 = slot.y + slot.h * 11 / 20;
+    let x1 = (slot.x + slot.w).min(img.width());
+    let y1 = (slot.y + slot.h).min(img.height());
+    let min_ink = (side * 3 / 20).max(4);
+    let is_bar = |x: u32| (y0..y1).filter(|&y| is_digit_ink(img.get_pixel(x, y))).count() as u32 >= min_ink;
+    let (mut bars, mut run) = (0u8, 0u32);
+    for x in x0..x1 {
+        if is_bar(x) {
+            run += 1;
+        } else {
+            if (1..=side / 14 + 1).contains(&run) {
+                bars += 1;
+            }
+            run = 0;
+        }
+    }
+    // Une seule barre blanche est plus probablement un reflet de l'icône qu'une marque « I ».
+    match bars {
+        2 | 3 => bars,
+        _ => 0,
+    }
+}
+
 /// Taille de case courante (médiane des cases carrées).
 pub fn slot_side(slots: &[Rect]) -> Option<u32> {
     let mut sides: Vec<u32> = slots.iter().filter(|r| r.w.abs_diff(r.h) <= 4).map(|r| r.w.min(r.h)).collect();
@@ -291,6 +318,23 @@ mod tests {
     fn fixture(name: &str) -> RgbImage {
         let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
         image::open(path).unwrap().to_rgb8()
+    }
+
+    #[test]
+    fn reads_tier_marks() {
+        let img = fixture("fragments-tab.png");
+        let slots = find_filled_slots(&img);
+        let side = slot_side(&slots).unwrap();
+        let tiers: Vec<u8> = slots.iter().map(|s| tier_mark(&img, s, side)).collect();
+        // Transmutation, Augmentation, Regal et Exalted : base, II, III ; Chaos : base, II.
+        let mut want = vec![0u8; slots.len()];
+        for i in [1, 10, 16, 22, 28] {
+            want[i] = 2;
+        }
+        for i in [2, 11, 17, 23] {
+            want[i] = 3;
+        }
+        assert_eq!(tiers, want);
     }
 
     #[test]

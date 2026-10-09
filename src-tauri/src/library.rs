@@ -12,6 +12,8 @@ const PRICES_BASE: &str = "https://raw.githubusercontent.com/ShigenoTV/poe2-stas
 const USER_AGENT: &str = concat!("poe2-stash-tracker/", env!("CARGO_PKG_VERSION"));
 /// En dessous, une case mémorisée est considérée comme le même objet.
 const MEMORY_MATCH: f32 = 0.06;
+/// Écart de distance en dessous duquel deux icônes sont jugées identiques (paliers d'une monnaie).
+const TIER_TIE: f32 = 0.01;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,13 +199,16 @@ impl Library {
         Ok(())
     }
 
-    pub fn identify(&self, slot: &Descriptor) -> Identification {
+    pub fn identify(&self, slot: &Descriptor, tier: u8) -> Identification {
         let memory = self.memory.as_deref().unwrap_or_default();
         let remembered = icons::rank(slot, memory.iter().map(|l| (l.item_id.as_str(), &l.descriptor)), false, 1);
         if remembered.first().is_some_and(|c| c.distance <= MEMORY_MATCH) {
             return Identification { source: MatchSource::Memory, candidates: remembered };
         }
-        let candidates = icons::rank(slot, self.references.iter().map(|(id, d)| (id.as_str(), d)), true, 5);
+        let mut candidates = icons::rank(slot, self.references.iter().map(|(id, d)| (id.as_str(), d)), true, 5);
+        if let Some(prices) = &self.prices {
+            prefer_tier(&mut candidates, tier, |id| prices.items.iter().find(|i| i.id == id).map(|i| i.name.as_str()));
+        }
         Identification { source: MatchSource::Ninja, candidates }
     }
 
@@ -214,6 +219,27 @@ impl Library {
         memory.push(Labeled { item_id, descriptor });
         let json = serde_json::to_vec(memory).map_err(|e| e.to_string())?;
         write_bytes(&data_dir(app)?.join("labels.json"), &json).await
+    }
+}
+
+/// Palier d'un objet d'après son nom poe.ninja.
+fn name_tier(name: &str) -> u8 {
+    if name.starts_with("Perfect ") {
+        3
+    } else if name.starts_with("Greater ") {
+        2
+    } else {
+        0
+    }
+}
+
+/// Les paliers d'une monnaie (Chaos Orb, Greater…, Perfect…) partagent la même icône : parmi les
+/// candidats aussi proches que le meilleur, on met en tête celui du palier lu sur la case.
+fn prefer_tier<'a>(candidates: &mut [Candidate], tier: u8, name: impl Fn(&str) -> Option<&'a str>) {
+    let Some(best) = candidates.first().map(|c| c.distance) else { return };
+    let tied = candidates.iter().take_while(|c| c.distance <= best + TIER_TIE).count();
+    if let Some(i) = candidates[..tied].iter().position(|c| name(&c.item_id).is_some_and(|n| name_tier(n) == tier)) {
+        candidates[..=i].rotate_right(1);
     }
 }
 
@@ -293,4 +319,35 @@ pub async fn label_slot(
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD.decode(descriptor).map_err(|e| e.to_string())?;
     state.0.lock().await.remember(&app, item_id, Descriptor(bytes)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(id: &str, distance: f32) -> Candidate {
+        Candidate { item_id: id.into(), distance }
+    }
+
+    #[test]
+    fn same_icon_is_settled_by_the_tier_mark() {
+        let names = |id: &str| Some(match id {
+            "perfect" => "Perfect Chaos Orb",
+            "greater" => "Greater Chaos Orb",
+            "base" => "Chaos Orb",
+            _ => "Vaal Orb",
+        });
+        let order = |tier| {
+            let mut list = vec![c("greater", 0.05), c("perfect", 0.05), c("base", 0.05), c("vaal", 0.09)];
+            prefer_tier(&mut list, tier, names);
+            list.iter().map(|c| c.item_id.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(order(3)[0], "perfect");
+        assert_eq!(order(2)[0], "greater");
+        assert_eq!(order(0)[0], "base");
+        // Un objet nettement plus loin ne passe jamais devant.
+        let mut list = vec![c("vaal", 0.03), c("perfect", 0.08)];
+        prefer_tier(&mut list, 3, names);
+        assert_eq!(list[0].item_id, "vaal");
+    }
 }

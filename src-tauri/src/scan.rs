@@ -43,6 +43,8 @@ pub struct ScannedSlot {
     pub w: u32,
     pub h: u32,
     pub quantity: Option<u32>,
+    /// Palier lu sur la case (2 = Greater, 3 = Perfect, 0 = objet de base ou sans palier).
+    pub tier: u8,
     pub icon_png_base64: String,
     /// Empreinte de l'icône, renvoyée par l'UI pour corriger l'objet (`label_slot`).
     pub descriptor: String,
@@ -85,6 +87,7 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
                 w: s.w,
                 h: s.h,
                 quantity: side.and_then(|side| vision::read_quantity(img, s, side)),
+                tier: side.map_or(0, |side| vision::tier_mark(img, s, side)),
                 descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&icon).0),
                 icon_png_base64: png_base64(&icon)?,
                 identification: None,
@@ -118,7 +121,7 @@ async fn identify_all(
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(&slot.descriptor)
                     .map_err(|e| e.to_string())?;
-                slot.identification = Some(lib.identify(&icons::Descriptor(bytes)));
+                slot.identification = Some(lib.identify(&icons::Descriptor(bytes), slot.tier));
             }
         }
         Err(err) => result.identify_error = Some(err),
