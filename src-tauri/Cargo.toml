@@ -21,6 +21,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+sha2 = "0.10"
+futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "sync"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

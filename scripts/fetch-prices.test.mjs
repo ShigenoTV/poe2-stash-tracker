@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { normalizeOverview, slugify } from "./fetch-prices.mjs";
 
 describe("normalizeOverview", () => {
-  it("joint lignes et métadonnées core.items", () => {
+  it("joint lignes et métadonnées de items et core.items", () => {
     const data = {
       core: {
         primary: "divine",
         rates: { exalted: 400 },
-        items: [{ id: "chaos", name: "Chaos Orb", image: "/gen/image/chaos.png", category: "Currency" }],
+        items: [{ id: "divine", name: "Divine Orb", image: "/gen/image/divine.png", category: "Currency" }],
       },
+      items: [{ id: "chaos", name: "Chaos Orb", image: "/gen/image/chaos.png", category: "Currency" }],
       lines: [
         { id: "chaos", primaryValue: 0.02, volumePrimaryValue: 150 },
         { id: "mystery", primaryValue: 1 },

@@ -110,3 +110,29 @@ button { font: inherit; color: inherit; }
   position: absolute; border: 2px solid var(--accent); background: rgba(200, 164, 90, 0.12);
   pointer-events: none;
 }
+
+.networth-inline { color: var(--accent); }
+.slot-button { all: unset; display: grid; place-items: center; width: 100%; height: 100%; cursor: pointer; }
+.slot-guessed { border-style: dashed; border-color: #7a6a3c; }
+.slot-unknown { border-color: #7c3a32; }
+.slot-confirmed { border-color: #3d5a3d; }
+
+.slot-editor {
+  position: fixed; right: 24px; bottom: 24px; width: 360px; max-height: 70vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 32px #000a;
+}
+.slot-editor-head { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
+.slot-editor-head img { width: 40px; height: 40px; }
+.slot-editor-head input {
+  flex: 1; min-width: 0; padding: 6px 8px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; font: inherit;
+}
+.slot-editor-head button { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; cursor: pointer; }
+.slot-editor-list { list-style: none; margin: 0; padding: 4px; overflow: auto; }
+.slot-editor-list button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; background: none; border: 0;
+  border-radius: 4px; cursor: pointer; text-align: left;
+}
+.slot-editor-list button:hover { background: var(--panel-2); }
+.slot-editor-list img { width: 28px; height: 28px; object-fit: contain; }
+.slot-editor-list .muted { margin-left: auto; font-size: 12px; }

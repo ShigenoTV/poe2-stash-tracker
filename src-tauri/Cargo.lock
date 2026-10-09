@@ -2736,14 +2736,18 @@ name = "poe2-stash-tracker"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "futures-util",
  "image",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-updater",
+ "tokio",
  "windows",
  "windows-capture",
 ]

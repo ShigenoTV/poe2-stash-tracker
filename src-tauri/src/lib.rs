@@ -1,4 +1,6 @@
 mod capture;
+mod icons;
+mod library;
 mod pricing;
 mod ratelimit;
 mod scan;
@@ -11,7 +13,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .manage(scan::LastCapture::default())
-        .invoke_handler(tauri::generate_handler![scan::capture_game, scan::scan_region]);
+        .manage(library::LibraryState::default())
+        .invoke_handler(tauri::generate_handler![
+            scan::capture_game,
+            scan::scan_region,
+            library::get_prices,
+            library::label_slot
+        ]);
 
     #[cfg(desktop)]
     {

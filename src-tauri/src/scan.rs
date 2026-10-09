@@ -1,6 +1,8 @@
 //! Commandes Tauri : capture de la fenêtre du jeu et lecture du coffre dans une zone choisie.
 
 use crate::capture::{self, CaptureMethod};
+use crate::icons;
+use crate::library::{Identification, LibraryState};
 use crate::vision::{self, Rect};
 use base64::Engine;
 use image::{imageops, RgbImage};
@@ -40,6 +42,10 @@ pub struct ScannedSlot {
     pub h: u32,
     pub quantity: Option<u32>,
     pub icon_png_base64: String,
+    /// Empreinte de l'icône, renvoyée par l'UI pour corriger l'objet (`label_slot`).
+    pub descriptor: String,
+    /// `None` si les prix et icônes de référence n'ont pas pu être chargés.
+    pub identification: Option<Identification>,
 }
 
 #[derive(Serialize)]
@@ -47,6 +53,8 @@ pub struct ScannedSlot {
 pub struct ScanResult {
     pub slot_side: Option<u32>,
     pub slots: Vec<ScannedSlot>,
+    /// Raison pour laquelle les objets n'ont pas pu être identifiés.
+    pub identify_error: Option<String>,
 }
 
 fn png_base64(img: &RgbImage) -> Result<String, String> {
@@ -89,17 +97,16 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
                 w: s.w,
                 h: s.h,
                 quantity: side.and_then(|side| vision::read_quantity(img, s, side)),
+                descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&icon).0),
                 icon_png_base64: png_base64(&icon)?,
+                identification: None,
             })
         })
         .collect::<Result<_, String>>()?;
-    Ok(ScanResult { slot_side: side, slots: scanned })
+    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None })
 }
 
-#[tauri::command]
-pub fn scan_region(state: tauri::State<'_, LastCapture>, region: Region) -> Result<ScanResult, String> {
-    let guard = state.0.lock().map_err(|e| e.to_string())?;
-    let img = guard.as_ref().ok_or("Aucune capture : capture d'abord la fenêtre du jeu.")?;
+fn crop_region(img: &RgbImage, region: Region) -> Result<RgbImage, String> {
     let clamp = |v: f64| v.clamp(0.0, 1.0);
     let x = (clamp(region.x) * f64::from(img.width())) as u32;
     let y = (clamp(region.y) * f64::from(img.height())) as u32;
@@ -108,5 +115,34 @@ pub fn scan_region(state: tauri::State<'_, LastCapture>, region: Region) -> Resu
     if w < 50 || h < 50 {
         return Err("Zone trop petite.".into());
     }
-    scan_image(&imageops::crop_imm(img, x, y, w, h).to_image())
+    Ok(imageops::crop_imm(img, x, y, w, h).to_image())
+}
+
+#[tauri::command]
+pub async fn scan_region(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, LastCapture>,
+    library: tauri::State<'_, LibraryState>,
+    region: Region,
+) -> Result<ScanResult, String> {
+    let stash = {
+        let guard = capture.0.lock().map_err(|e| e.to_string())?;
+        let img = guard.as_ref().ok_or("Aucune capture : capture d'abord la fenêtre du jeu.")?;
+        crop_region(img, region)?
+    };
+    let mut result = scan_image(&stash)?;
+
+    let mut lib = library.0.lock().await;
+    match lib.ensure_loaded(&app).await {
+        Ok(()) => {
+            for slot in &mut result.slots {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(&slot.descriptor)
+                    .map_err(|e| e.to_string())?;
+                slot.identification = Some(lib.identify(&icons::Descriptor(bytes)));
+            }
+        }
+        Err(err) => result.identify_error = Some(err),
+    }
+    Ok(result)
 }

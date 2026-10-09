@@ -1,11 +1,16 @@
-import { useRef, useState, type PointerEvent } from "react";
-import { compactQuantity } from "../lib/format";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { compactQuantity, formatValue } from "../lib/format";
+import { SlotEditor } from "./SlotEditor";
 import {
   captureGame,
+  chosenItem,
+  getPrices,
+  labelSlot,
   loadRegion,
   saveRegion,
   scanRegion,
   type CapturePreview,
+  type PriceFile,
   type Region,
   type ScanResult,
 } from "../lib/scanner";
@@ -16,6 +21,8 @@ export function ScannerView() {
   const [preview, setPreview] = useState<CapturePreview | null>(null);
   const [region, setRegion] = useState<Region | null>(loadRegion);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [prices, setPrices] = useState<PriceFile | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -33,12 +40,28 @@ export function ScannerView() {
     }
   }
 
+  async function scan(r: Region) {
+    const res = await run(() => scanRegion(r));
+    setResult(res ?? null);
+    if (res && !res.identifyError && !prices) setPrices((await run(getPrices)) ?? null);
+  }
+
+  async function pick(index: number, itemId: string) {
+    const slot = result!.slots[index];
+    await run(() => labelSlot(slot.descriptor, itemId));
+    const slots = result!.slots.map((s, i) =>
+      i === index ? { ...s, identification: { source: "memory" as const, candidates: [{ itemId, distance: 0 }] } } : s,
+    );
+    setResult({ ...result!, slots });
+    setEditing(null);
+  }
+
   async function capture() {
     const p = await run(captureGame);
     if (!p) return;
     setPreview(p);
     setResult(null);
-    if (region) setResult((await run(() => scanRegion(region))) ?? null);
+    if (region) await scan(region);
   }
 
   function point(e: PointerEvent): { x: number; y: number } {
@@ -65,11 +88,22 @@ export function ScannerView() {
     drag.current = null;
     if (region && region.w > 0.02 && region.h > 0.02) {
       saveRegion(region);
-      setResult((await run(() => scanRegion(region))) ?? null);
+      await scan(region);
     }
   }
 
   const read = result?.slots.filter((s) => s.quantity !== null).length ?? 0;
+  const byId = useMemo(() => new Map((prices?.items ?? []).map((i) => [i.id, i])), [prices]);
+  const exaltedPerDivine = prices?.rates.exalted ?? null;
+
+  const valued = (result?.slots ?? []).map((slot) => {
+    const chosen = chosenItem(slot);
+    const item = chosen ? byId.get(chosen.itemId) : undefined;
+    const total = item && slot.quantity !== null ? item.value * slot.quantity : null;
+    return { slot, chosen, item, total };
+  });
+  const totalDivine = valued.reduce((sum, v) => sum + (v.total ?? 0), 0);
+  const unknown = valued.filter((v) => !v.item).length;
 
   return (
     <div className="scanner">
@@ -117,15 +151,50 @@ export function ScannerView() {
         <>
           <h2 className="scanner-title">
             {result.slots.length} cases occupées, {read} quantités lues
+            {prices && (
+              <>
+                {" · "}
+                <span className="networth-inline">{formatValue(totalDivine)} div</span>
+                {exaltedPerDivine && <span className="muted"> ({formatValue(totalDivine * exaltedPerDivine)} ex)</span>}
+              </>
+            )}
           </h2>
+          {result.identifyError && <p className="update-error">Objets non identifiés : {result.identifyError}</p>}
+          {prices && unknown > 0 && (
+            <p className="muted">
+              {unknown} case(s) sans objet reconnu, non comptées. Clique sur une case pour choisir l'objet ; l'app s'en
+              souviendra.
+            </p>
+          )}
           <ul className="item-grid">
-            {result.slots.map((s) => (
-              <li key={`${s.x}-${s.y}`} className="item-tile" title={s.quantity === null ? "quantité illisible" : String(s.quantity)}>
-                <img src={`data:image/png;base64,${s.iconPngBase64}`} alt="" className="item-icon" />
-                <span className="item-qty">{s.quantity === null ? "?" : compactQuantity(s.quantity)}</span>
-              </li>
-            ))}
+            {valued.map(({ slot, chosen, item, total }, i) => {
+              const status = !item ? "unknown" : chosen?.confirmed ? "confirmed" : "guessed";
+              const title = [
+                item?.name ?? "Objet inconnu",
+                slot.quantity === null ? "quantité illisible" : `× ${slot.quantity}`,
+                total !== null ? `${formatValue(total)} div` : null,
+                status === "guessed" ? "suggestion à confirmer" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <li key={`${slot.x}-${slot.y}`} className={`item-tile slot-${status}`} title={title}>
+                  <button type="button" className="slot-button" onClick={() => prices && setEditing(i)}>
+                    <img src={`data:image/png;base64,${slot.iconPngBase64}`} alt={item?.name ?? ""} className="item-icon" />
+                    <span className="item-qty">{slot.quantity === null ? "?" : compactQuantity(slot.quantity)}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          {editing !== null && prices && (
+            <SlotEditor
+              slot={result.slots[editing]}
+              prices={prices}
+              onPick={(id) => pick(editing, id)}
+              onClose={() => setEditing(null)}
+            />
+          )}
         </>
       )}
     </div>

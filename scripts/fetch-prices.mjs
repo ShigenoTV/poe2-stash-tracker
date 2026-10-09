@@ -57,7 +57,8 @@ function iconUrl(image) {
 /** Transforme une réponse exchange/overview en lignes normalisées. */
 export function normalizeOverview(type, data) {
   const core = data.core ?? {};
-  const byId = new Map((core.items ?? []).map((item) => [item.id, item]));
+  // Les métadonnées (nom, icône) sont dans `items` ; `core.items` ne décrit que les monnaies de référence.
+  const byId = new Map([...(core.items ?? []), ...(data.items ?? [])].map((item) => [item.id, item]));
   return (data.lines ?? [])
     .filter((line) => typeof line.primaryValue === "number")
     .map((line) => {

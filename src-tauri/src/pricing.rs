@@ -1,7 +1,7 @@
 //! Fichier de prix publié chaque heure par le workflow `prices.yml`
 //! (voir `scripts/fetch-prices.mjs`) et sa correspondance avec l'inventaire.
 
-#![allow(dead_code)] // Branché sur l'UI à l'étape « Prix ».
+#![allow(dead_code)] // `PriceIndex` sert au rapprochement par nom (fournisseurs API).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
