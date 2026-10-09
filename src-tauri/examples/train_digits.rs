@@ -17,7 +17,10 @@ fn main() {
         if *want == "-" {
             continue;
         }
-        let glyphs = vision::quantity_glyphs(&img, slot, side);
+        let mut glyphs = vision::quantity_glyphs(&img, slot, side, false);
+        if glyphs.len() != want.len() {
+            glyphs = vision::quantity_glyphs(&img, slot, side, true);
+        }
         if glyphs.len() != want.len() {
             eprintln!("case {slot:?} : {} glyphes pour « {want} », ignorée", glyphs.len());
             continue;

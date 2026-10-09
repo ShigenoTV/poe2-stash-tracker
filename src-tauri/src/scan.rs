@@ -235,6 +235,26 @@ mod tests {
     }
 
     #[test]
+    fn reads_geforce_now_stream() {
+        // Plein écran GeForce NOW (2558×1438) : cadre bleu autour du coffre et chiffres compressés.
+        let img = fixture("geforce-now.png");
+        let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
+        let want = [
+            "99", "102", "16", "125", "39", "10", "20", "33", "10", "99", "73", "18", "11", "414", "101", "32", "12",
+            "1", "20", "126", "126", "1829", "44", "2", "-", "15", "66", "289", "14", "2", "124", "2", "6", "5", "8",
+            "3",
+        ];
+        assert_eq!(scan.slots.len(), want.len());
+        let right = scan
+            .slots
+            .iter()
+            .zip(want)
+            .filter(|(s, w)| s.quantity.map_or("-".to_string(), |q| q.to_string()) == *w)
+            .count();
+        assert!(right >= 32, "{right}/36 bonnes lectures");
+    }
+
+    #[test]
     fn game_scenery_is_not_a_stash() {
         let img = fixture("fullscreen-1920x1080.png");
         // Même taille de zone, déplacée sur le décor au centre de l'écran.

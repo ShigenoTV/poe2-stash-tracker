@@ -17,8 +17,8 @@ fn is_slot_background(p: &image::Rgb<u8>) -> bool {
     b >= r + 8 && b >= g + 8 && b >= 18 && r < 40 && b < 110
 }
 
-/// Composantes connexes (4-voisinage) d'un masque, renvoyées sous forme de boîtes.
-fn components(mask: &[bool], width: u32, height: u32) -> Vec<(Rect, u32)> {
+/// Composantes connexes d'un masque (4-voisinage, ou 8 avec `diagonal`), sous forme de boîtes.
+fn components(mask: &[bool], width: u32, height: u32, diagonal: bool) -> Vec<(Rect, u32)> {
     let (w, h) = (width as usize, height as usize);
     let mut seen = vec![false; mask.len()];
     let mut out = Vec::new();
@@ -47,6 +47,12 @@ fn components(mask: &[bool], width: u32, height: u32) -> Vec<(Rect, u32)> {
             if x + 1 < w { push(i + 1); }
             if y > 0 { push(i - w); }
             if y + 1 < h { push(i + w); }
+            if diagonal {
+                if x > 0 && y > 0 { push(i - w - 1); }
+                if x + 1 < w && y > 0 { push(i - w + 1); }
+                if x > 0 && y + 1 < h { push(i + w - 1); }
+                if x + 1 < w && y + 1 < h { push(i + w + 1); }
+            }
         }
         out.push((
             Rect { x: x0 as u32, y: y0 as u32, w: (x1 - x0 + 1) as u32, h: (y1 - y0 + 1) as u32 },
@@ -63,10 +69,12 @@ fn components(mask: &[bool], width: u32, height: u32) -> Vec<(Rect, u32)> {
 /// qui tiennent ensemble dans une case.
 pub fn find_filled_slots(img: &RgbImage) -> Vec<Rect> {
     let mask: Vec<bool> = img.pixels().map(is_slot_background).collect();
-    let mut parts: Vec<Rect> = components(&mask, img.width(), img.height())
+    let mut parts: Vec<Rect> = components(&mask, img.width(), img.height(), false)
         .into_iter()
         .filter(|(_, count)| *count >= 15)
         .map(|(r, _)| r)
+        // Un cadre bleu autour du coffre (onglet sélectionné, GeForce NOW) n'est pas une case.
+        .filter(|r| r.w < img.width() / 2 && r.h < img.height() / 2)
         .collect();
 
     let mut sides: Vec<u32> = parts
@@ -133,7 +141,7 @@ fn is_digit_ink(p: &image::Rgb<u8>) -> bool {
 }
 
 /// Isole les chiffres de la quantité, en haut à gauche de la case.
-pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32) -> Vec<Glyph> {
+pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -> Vec<Glyph> {
     let x0 = slot.x + 1;
     let y0 = slot.y + 1;
     let w = (slot.w.min(side) * 4 / 5).min(img.width() - x0);
@@ -145,7 +153,7 @@ pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32) -> Vec<Glyph> {
 
     let min_h = side * 3 / 20;
     let max_h = side * 8 / 25;
-    let mut parts: Vec<Rect> = components(&mask, w, h)
+    let mut parts: Vec<Rect> = components(&mask, w, h, diagonal)
         .into_iter()
         .filter(|(r, count)| *count >= 4 && r.h >= min_h && r.h <= max_h && r.w <= r.h)
         .map(|(r, _)| Rect { x: r.x + x0, y: r.y + y0, ..r })
@@ -209,11 +217,27 @@ const DIGIT_TEMPLATES: [(char, f32, &str); 10] = [
     ('9', 0.667, "003fbfbfbfbf3f003fbfbf3f7fffbf3f7fff7f003fbfff7fbfff7f0d007fff7fffff7f0d0d7fffffbfff7f00007fffff7fffbf7f7fbfffbf3f7fbfff7fbfff7f0d0d26193fbfff7f000d26197fffbf3f3f3f0000bfbf3f007fbf7f7fbf3f0000"), // 5 exemples
 ];
 
+/// Mêmes chiffres vus à travers un flux vidéo (GeForce NOW) : traits plus épais et flous.
+#[rustfmt::skip]
+const STREAM_DIGIT_TEMPLATES: [(char, f32, &str); 10] = [
+    ('0', 0.780, "0b358aaadfca6a202094b43f4ab4ea8a6ab4550b0b54d4ca9f9f200b0b0b8af4bf7f0000150b7fffdf7f000b2b155fdfea7f000b150b40bfca8a0b0015155fd4b4b43500402a7fca8af474002a2a949f54d4ca4a157494350b54caca947f3500"), // 6 exemples
+    ('1', 0.284, "64727f7fa7c9bcaea7a7c9ebffffe4d700002143aedde4d70d0700006bbce4d70d0700006bbce4d7000000006bbce4d7000000006bbce4d7000000006bbce4d7000000006bbce4d7000000006bbce4d70d0d00006bbce4d70707030057a7ffff"), // 19 exemples
+    ('2', 0.574, "76baa871c8c46805e4a8290e51d6b64d5229050924ade4a40909090e24adc8690e12121248d69f1b050e120e68d14d1700050932ba9612000505097fb13209000909489a360500000e44963b0900000076c8ba645b5b5b5be4ededede8e8bf96"), // 14 exemples
+    ('3', 0.518, "7fb4b47fcab44a00ffca35006aeaaa2a7f4a000040d4bf550000000055ea942a000000207f9435000000208aca7415000000000b4ad4d47f000000000b9fffea000000000094ffea0000000020b4df95000000005fdf9f40002a6a6a8a8a4a15"), // 6 exemples
+    ('4', 0.643, "0000002fafff7f000000006fefff7f0010003f7fbfff7f00102f7f4f7fff7f00006f7f107fff7f003f8f4f007fff7f008f4f00007fff7f00cf8f7f7fbfffbf7f7f7f7fafefffbf7f0000002fafff7f00000000007fff7f00000000007fff7f00"), // 4 exemples
+    ('5', 0.487, "d4d4d4d4d4d4aa7fff942a2a2a2a1500ff7f000000000000ff942a2a00000000d4bfbfd43f2a15002a2a6abfead47f2a000000003faaead400000000007fffff00000000007fffff00002a551594ead400002a5555aaaa7f00002a557f7f3f00"), // 3 exemples
+    ('6', 0.607, "004a9fdf7f7f7f7f0bb4df5f0000002055ea7f0000000000aadf200000000000dfbf00357f7f3500ffdf20357fcab45fffbf0000000095ffffbf0000000095ffdfd41500000095ffaaf44a000000aadf6aff94150020df7f209fca947f9f9f20"), // 6 exemples
+    ('7', 0.500, "ffffffffffffffff7f7f7f7f7fbfffff00000000007fbf7f000000003fbf7f00000000007fbf3f00000000007f7f00000000007fbf3f000000003fbf7f00000000007fbf3f000000003fbf7f00000000007fbf3f000000007fbf7f0000000000"), // 1 exemples
+    ('8', 0.674, "5fba6f205f6a9f30cfd520202000b540d4d520152b07b5359fd56f10307a75104fa5bf6f7f913a0b2045afcfdf7a453030754f5f9faf9f607f9500204a8fc58fcf5500202040bfcfc5351c151515b5babf7a30101010af7fbfaa2a30305f9f30"), // 4 exemples
+    ('9', 0.563, "246d88919aa451095bad48123fb6c83fad8809002476e488d16d00001236c8d1db7f00000012a4ffb6b624000012a4ff76e4a47f6d48ade42d767f7f6d48a4b6000000001264da64000000003fb6c82d5b5b3f6d9bc8640964769ab67f641200"), // 7 exemples
+];
+
 /// Reconnaît un chiffre : forme la plus proche, en tenant compte de la largeur relative.
 pub fn classify(glyph: &Glyph) -> Option<char> {
     let aspect = glyph.rect.w as f32 / glyph.rect.h as f32;
     DIGIT_TEMPLATES
         .iter()
+        .chain(&STREAM_DIGIT_TEMPLATES)
         .map(|(c, ref_aspect, cells)| {
             let shape: f32 = cells
                 .as_bytes()
@@ -234,8 +258,14 @@ pub fn classify(glyph: &Glyph) -> Option<char> {
 
 /// Quantité lue dans une case, ou `None` si aucun chiffre n'est reconnu.
 pub fn read_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
-    let digits: Option<String> = quantity_glyphs(img, slot, side).iter().map(classify).collect();
-    digits.filter(|d| !d.is_empty())?.parse().ok()
+    let read = |diagonal| -> Option<String> {
+        let digits: Option<String> = quantity_glyphs(img, slot, side, diagonal).iter().map(classify).collect();
+        digits.filter(|d| !d.is_empty())
+    };
+    // En 4-voisinage, un trait diagonal fin (flux vidéo compressé, GeForce NOW) coupe le chiffre
+    // en deux et il est perdu ; en 8-voisinage, un chiffre qui touche l'icône s'y colle. On garde
+    // la lecture la plus complète des deux.
+    [read(false), read(true)].into_iter().flatten().max_by_key(|d| d.len())?.parse().ok()
 }
 
 /// Taille de case courante (médiane des cases carrées).

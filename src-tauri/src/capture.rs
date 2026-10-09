@@ -9,6 +9,8 @@
 
 /// Morceau du titre de la fenêtre du jeu.
 pub const GAME_WINDOW_TITLE: &str = "Path of Exile 2";
+/// Fenêtre de l'application GeForce NOW, quand le jeu y est lancé en streaming.
+pub const GEFORCE_NOW_TITLE: &str = "GeForce NOW";
 
 /// Image RGBA 8 bits, sans padding.
 pub struct Captured {
@@ -43,7 +45,7 @@ pub fn capture_game_window() -> Result<Captured, String> {
 
 #[cfg(windows)]
 mod win {
-    use super::{looks_black, Captured, GAME_WINDOW_TITLE};
+    use super::{looks_black, Captured, GAME_WINDOW_TITLE, GEFORCE_NOW_TITLE};
     use std::sync::{mpsc, Mutex};
     use std::time::Duration;
     use windows::Win32::Foundation::HWND;
@@ -98,6 +100,7 @@ mod win {
 
     fn find_window() -> Result<Window, String> {
         Window::from_contains_name(GAME_WINDOW_TITLE)
+            .or_else(|_| Window::from_contains_name(GEFORCE_NOW_TITLE))
             .map_err(|_| format!("Fenêtre « {GAME_WINDOW_TITLE} » introuvable : le jeu est-il lancé ?"))
     }
 
