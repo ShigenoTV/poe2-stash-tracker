@@ -21,6 +21,7 @@ export function ItemGrid({ items, currency, rates }: Props) {
           <li key={item.id} className="item-row">
             <span className="item-row-icon">{item.icon && <img src={item.icon} alt="" />}</span>
             <span className="item-row-name">{item.name}</span>
+            <span className="item-row-stash muted" title="Onglet du coffre">{item.stash || "—"}</span>
             <span className="item-row-qty">× {item.quantity.toLocaleString("fr-FR")}</span>
             <span className="item-row-unit muted">{item.unitExalted === null ? "" : `${money(item.unitExalted)} / u`}</span>
             <span className={`item-row-total${total === null ? " muted" : ""}`}>

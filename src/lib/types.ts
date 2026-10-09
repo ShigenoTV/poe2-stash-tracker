@@ -64,6 +64,8 @@ export interface SnapshotItem {
   unitExalted: number | null;
   /** URL de l'icône (poe.ninja) ou image capturée en data URI. */
   icon?: string;
+  /** Onglet(s) du coffre où l'objet a été vu, ex. « Expedition » (absent des anciens snapshots). */
+  stash?: string;
 }
 
 export interface Snapshot {

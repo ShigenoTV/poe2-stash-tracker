@@ -183,7 +183,7 @@ button { font: inherit; color: inherit; }
 
 .item-list { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
 .item-row {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 120px 120px; align-items: center; gap: 12px;
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 140px auto 120px 120px; align-items: center; gap: 12px;
   padding: 6px 14px; border-top: 1px solid var(--border);
 }
 .item-row:first-child { border-top: 0; }
@@ -191,6 +191,7 @@ button { font: inherit; color: inherit; }
 .item-row-icon { width: 40px; height: 40px; display: grid; place-items: center; }
 .item-row-icon img { max-width: 40px; max-height: 40px; object-fit: contain; }
 .item-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-row-stash { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-row-qty { color: var(--muted); font-variant-numeric: tabular-nums; }
 .item-row-unit { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .item-row-total { text-align: right; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }

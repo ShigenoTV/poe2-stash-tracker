@@ -138,12 +138,23 @@ async fn icon_descriptor(http: &reqwest::Client, dir: &Path, url: &str) -> Optio
     Some(icons::describe_reference(&img))
 }
 
+/// Les gemmes de lignée ne s'empilent pas et n'ont pas d'onglet dédié : elles ne peuvent pas
+/// apparaître dans les onglets scannés, et leurs icônes provoquaient de faux positifs coûteux.
+fn stackable(category: &str) -> bool {
+    category != "LineageSupportGems"
+}
+
 async fn build_references(app: &tauri::AppHandle, prices: &PriceFile) -> Result<Vec<(String, Descriptor)>, String> {
     let dir = data_dir(app)?.join("icons");
     let http = client()?;
     let mut refs = Vec::new();
     // Par paquets de 8 : rapide sans marteler le CDN.
-    let items: Vec<_> = prices.items.iter().filter_map(|i| i.icon.as_ref().map(|u| (i.id.clone(), u.clone()))).collect();
+    let items: Vec<_> = prices
+        .items
+        .iter()
+        .filter(|i| stackable(&i.category))
+        .filter_map(|i| i.icon.as_ref().map(|u| (i.id.clone(), u.clone())))
+        .collect();
     for chunk in items.chunks(8) {
         let found = futures_util::future::join_all(
             chunk.iter().map(|(id, url)| {

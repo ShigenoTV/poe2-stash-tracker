@@ -41,6 +41,15 @@ describe("buildSnapshot", () => {
   });
 });
 
+describe("onglet d'origine", () => {
+  it("nomme l'onglet d'après ses objets reconnus, y compris pour les objets non identifiés", () => {
+    const tab: ScanResult = { slotSide: 70, identifyError: null, slots: [slot(0, 100, "simulacrum-splinter"), slot(80, 3, null)] };
+    const empty: ScanResult = { slotSide: 70, identifyError: null, slots: [slot(0, 2, null)] };
+    const snap = buildSnapshot([tab, empty], prices);
+    expect(snap.items.map((i) => i.stash)).toEqual(["Fragment", "Fragment", "Onglet 2"]);
+  });
+});
+
 describe("categoryOf", () => {
   it("range chaque type poe.ninja dans l'onglet du jeu", async () => {
     const { categoryOf } = await import("./types");

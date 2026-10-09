@@ -1,5 +1,5 @@
 import { chosenItem, type PriceFile, type ScanResult } from "./scanner";
-import { categoryOf, type Snapshot, type SnapshotItem } from "./types";
+import { CATEGORY_LABEL, categoryOf, type Category, type Snapshot, type SnapshotItem } from "./types";
 
 /** Regroupe les cases scannées par objet et les valorise avec le fichier de prix. */
 export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = new Date()): Snapshot {
@@ -8,6 +8,15 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
   const items = new Map<string, SnapshotItem>();
 
   const slots = scans.flatMap((scan, tab) => scan.slots.map((slot) => ({ slot, tab })));
+  const tabNames = nameTabs(scans, byId);
+  const seenIn = new Map<string, Set<string>>();
+  for (const { slot, tab } of slots) {
+    if (slot.quantity === null) continue;
+    const chosen = chosenItem(slot);
+    const id = chosen && byId.has(chosen.itemId) ? chosen.itemId : `unknown-${tab}-${slot.x}-${slot.y}`;
+    if (!seenIn.has(id)) seenIn.set(id, new Set());
+    seenIn.get(id)!.add(tabNames[tab]);
+  }
   for (const { slot, tab } of slots) {
     if (slot.quantity === null) continue;
     const chosen = chosenItem(slot);
@@ -40,6 +49,8 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
     }
   }
 
+  for (const item of items.values()) item.stash = [...(seenIn.get(item.id) ?? [])].join(", ");
+
   return {
     id: takenAt.toISOString(),
     takenAt: takenAt.toISOString(),
@@ -48,6 +59,24 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
     ...(prices.rates.chaos ? { chaosPerDivine: prices.rates.chaos } : {}),
     items: [...items.values()],
   };
+}
+
+/**
+ * Nomme chaque onglet scanné d'après la catégorie la plus représentée parmi ses objets reconnus
+ * (« Expedition », « Fragment »…), sinon « Onglet N ».
+ */
+function nameTabs(scans: ScanResult[], byId: Map<string, PriceFile["items"][number]>): string[] {
+  return scans.map((scan, tab) => {
+    const counts = new Map<Category, number>();
+    for (const slot of scan.slots) {
+      const chosen = chosenItem(slot);
+      const priced = chosen ? byId.get(chosen.itemId) : undefined;
+      const category = priced && categoryOf(priced.category);
+      if (category && category !== "Other") counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+    return best ? CATEGORY_LABEL[best[0]] : `Onglet ${tab + 1}`;
+  });
 }
 
 const KEY = "lastSnapshot";
