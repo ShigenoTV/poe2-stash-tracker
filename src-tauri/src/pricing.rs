@@ -27,6 +27,11 @@ pub struct PricedItem {
     pub icon: Option<String>,
     pub value: f64,
     pub volume: Option<f64>,
+    /// Variation du prix sur 24 h et sur 7 jours, en % (absente des anciens fichiers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change24h: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change7d: Option<f64>,
 }
 
 /// Normalise un nom d'objet pour le rapprochement GGG ↔ poe.ninja.
@@ -84,6 +89,8 @@ mod tests {
                 icon: None,
                 value: 0.05,
                 volume: Some(1000.0),
+                change24h: None,
+                change7d: None,
             }],
         }
     }

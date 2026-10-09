@@ -9,6 +9,8 @@ export interface Identification {
   /** `memory` : case déjà identifiée par le joueur ; `ninja` : rapprochement avec les icônes poe.ninja. */
   source: "memory" | "ninja";
   candidates: Candidate[];
+  /** Suggestion retenue mais incertaine (absent des scans plus anciens). */
+  doubtful?: boolean;
 }
 
 export interface PricedItem {
@@ -19,6 +21,9 @@ export interface PricedItem {
   /** Valeur en monnaie `primary` (Divine). */
   value: number;
   volume: number | null;
+  /** Variation du prix en %, sur 24 h et 7 jours (absente des anciens fichiers). */
+  change24h?: number | null;
+  change7d?: number | null;
 }
 
 export interface PriceFile {
@@ -35,7 +40,8 @@ export interface ScannedSlot {
   w: number;
   h: number;
   quantity: number | null;
-  iconPngBase64: string;
+  /** Image de la case, fournie seulement si l'objet est inconnu ou douteux. */
+  iconPngBase64: string | null;
   descriptor: string;
   identification: Identification | null;
 }
@@ -60,6 +66,9 @@ export const refreshPrices = () => invoke<PriceFile>("refresh_prices");
 export const labelSlot = (descriptor: string, itemId: string) =>
   invoke<void>("label_slot", { descriptor, itemId });
 export const forgetLabels = () => invoke<void>("forget_labels");
+/** Écrit un CSV dans le dossier Téléchargements ; renvoie son chemin. */
+export const exportCsv = (fileName: string, contents: string) =>
+  invoke<string>("export_csv", { fileName, contents });
 
 export interface League {
   id: string;
@@ -73,10 +82,17 @@ export const setLeague = (league: string | null) => invoke<PriceFile>("set_leagu
 /** Au-delà, la suggestion poe.ninja est jugée trop incertaine pour être comptée. */
 export const NINJA_MAX_DISTANCE = 0.12;
 
-/** Objet retenu pour une case, ou `null` si rien de fiable. */
-export function chosenItem(slot: ScannedSlot): { itemId: string; confirmed: boolean } | null {
+/** Objet retenu pour une case, ou `null` si rien de fiable. `doubtful` : à vérifier par le joueur. */
+export function chosenItem(slot: ScannedSlot): { itemId: string; confirmed: boolean; doubtful: boolean } | null {
   const best = slot.identification?.candidates[0];
   if (!best) return null;
-  if (slot.identification!.source === "memory") return { itemId: best.itemId, confirmed: true };
-  return best.distance <= NINJA_MAX_DISTANCE ? { itemId: best.itemId, confirmed: false } : null;
+  if (slot.identification!.source === "memory") return { itemId: best.itemId, confirmed: true, doubtful: false };
+  return best.distance <= NINJA_MAX_DISTANCE
+    ? { itemId: best.itemId, confirmed: false, doubtful: !!slot.identification!.doubtful }
+    : null;
+}
+
+/** Image d'une case en data URI, si le scan l'a fournie. */
+export function slotIcon(slot: ScannedSlot): string | undefined {
+  return slot.iconPngBase64 ? `data:image/png;base64,${slot.iconPngBase64}` : undefined;
 }

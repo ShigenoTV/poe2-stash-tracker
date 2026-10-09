@@ -30,6 +30,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 Le workflow `Prix poe.ninja` tourne chaque heure et publie un JSON par ligue sur la branche `prices` :
 `https://raw.githubusercontent.com/ShigenoTV/poe2-stash-tracker/prices/<ligue>/latest.json`.
+Chaque objet y porte aussi sa variation de prix sur 24 h et 7 jours (`change24h`, `change7d`, en %),
+tirée de la sparkline poe.ninja.
 
 ## Releases et mise à jour automatique
 

@@ -45,7 +45,11 @@ pub struct ScannedSlot {
     pub quantity: Option<u32>,
     /// Palier lu sur la case (2 = Greater, 3 = Perfect, 0 = objet de base ou sans palier).
     pub tier: u8,
-    pub icon_png_base64: String,
+    /// Image de la case, envoyée seulement quand l'objet est inconnu ou douteux (sinon l'icône
+    /// poe.ninja suffit) : moins de PNG à encoder et à garder côté interface.
+    pub icon_png_base64: Option<String>,
+    #[serde(skip)]
+    icon: RgbImage,
     /// Empreinte de l'icône, renvoyée par l'UI pour corriger l'objet (`label_slot`).
     pub descriptor: String,
     /// `None` si les prix et icônes de référence n'ont pas pu être chargés.
@@ -68,10 +72,16 @@ fn png_base64(img: &RgbImage) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
-fn to_rgb(c: capture::Captured) -> Result<RgbImage, String> {
+/// Zone du coffre découpée dans la capture, convertie en RGB : seule la zone est convertie,
+/// pas l'écran entier.
+fn crop_captured(c: capture::Captured, region: Option<Region>) -> Result<RgbImage, String> {
     let rgba = image::RgbaImage::from_raw(c.width, c.height, c.rgba)
         .ok_or("Capture : taille d'image incohérente")?;
-    Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8())
+    let (x, y, w, h) = region_rect(rgba.width(), rgba.height(), region.unwrap_or_else(|| Region::stash(c.width, c.height)))?;
+    Ok(RgbImage::from_fn(w, h, |px, py| {
+        let [r, g, b, _] = rgba.get_pixel(x + px, y + py).0;
+        image::Rgb([r, g, b])
+    }))
 }
 
 pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
@@ -89,7 +99,8 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
                 quantity: side.and_then(|side| vision::read_quantity(img, s, side)),
                 tier: side.map_or(0, |side| vision::tier_mark(img, s, side)),
                 descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&icon).0),
-                icon_png_base64: png_base64(&icon)?,
+                icon_png_base64: None,
+                icon,
                 identification: None,
             })
         })
@@ -97,15 +108,22 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
     Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None })
 }
 
-fn crop_region(img: &RgbImage, region: Region) -> Result<RgbImage, String> {
+/// Rectangle en pixels d'une zone exprimée en fractions de l'image.
+fn region_rect(width: u32, height: u32, region: Region) -> Result<(u32, u32, u32, u32), String> {
     let clamp = |v: f64| v.clamp(0.0, 1.0);
-    let x = (clamp(region.x) * f64::from(img.width())) as u32;
-    let y = (clamp(region.y) * f64::from(img.height())) as u32;
-    let w = ((clamp(region.w) * f64::from(img.width())) as u32).min(img.width() - x);
-    let h = ((clamp(region.h) * f64::from(img.height())) as u32).min(img.height() - y);
+    let x = (clamp(region.x) * f64::from(width)) as u32;
+    let y = (clamp(region.y) * f64::from(height)) as u32;
+    let w = ((clamp(region.w) * f64::from(width)) as u32).min(width - x);
+    let h = ((clamp(region.h) * f64::from(height)) as u32).min(height - y);
     if w < 50 || h < 50 {
         return Err("Zone trop petite.".into());
     }
+    Ok((x, y, w, h))
+}
+
+#[cfg(test)]
+fn crop_region(img: &RgbImage, region: Region) -> Result<RgbImage, String> {
+    let (x, y, w, h) = region_rect(img.width(), img.height(), region)?;
     Ok(imageops::crop_imm(img, x, y, w, h).to_image())
 }
 
@@ -125,6 +143,11 @@ async fn identify_all(
             }
         }
         Err(err) => result.identify_error = Some(err),
+    }
+    for slot in &mut result.slots {
+        if !slot.identification.as_ref().is_some_and(Identification::confident) {
+            slot.icon_png_base64 = Some(png_base64(&slot.icon)?);
+        }
     }
     Ok(())
 }
@@ -180,8 +203,7 @@ pub async fn auto_scan(
     let captured = tauri::async_runtime::spawn_blocking(capture::capture_game_window)
         .await
         .map_err(|e| e.to_string())??;
-    let img = to_rgb(captured)?;
-    let stash = crop_region(&img, region.unwrap_or_else(|| Region::stash(img.width(), img.height())))?;
+    let stash = crop_captured(captured, region)?;
     let thumb = thumbnail(&stash);
 
     {

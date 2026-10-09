@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { fromDivine, type Currency, type Rates } from "./currency";
+import { holdingsOf, type Holdings } from "./compare";
 import type { Snapshot } from "./types";
 
 export interface HistoryPoint {
@@ -10,6 +11,8 @@ export interface HistoryPoint {
   exalted: number;
   /** Absent des points enregistrés avant l'affichage en Chaos. */
   chaos?: number;
+  /** Quantité de chaque objet identifié, pour comparer deux moments (absent des anciens points). */
+  items?: Holdings;
 }
 
 /** Valeur d'un point dans la devise affichée, au taux de l'époque quand il est connu. */
@@ -38,6 +41,7 @@ export function recordSnapshot(snapshot: Snapshot): Promise<HistoryPoint[]> {
     divine,
     exalted,
     ...(snapshot.chaosPerDivine ? { chaos: divine * snapshot.chaosPerDivine } : {}),
+    items: holdingsOf(snapshot),
   };
   return invoke<HistoryPoint[]>("record_history", { point });
 }

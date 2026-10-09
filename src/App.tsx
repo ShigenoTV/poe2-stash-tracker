@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CurrencySelect } from "./components/CurrencySelect";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
+import { ChangesPanel } from "./components/ChangesPanel";
 import { ItemGrid } from "./components/ItemGrid";
 import { NetWorthChart } from "./components/NetWorthChart";
 import { clearHistory, loadHistory, recordSnapshot, type HistoryPoint } from "./lib/history";
@@ -8,7 +9,10 @@ import { PricesControl } from "./components/PricesControl";
 import { ScanControl } from "./components/ScanControl";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SlotEditor } from "./components/SlotEditor";
-import { forgetLabels } from "./lib/scanner";
+import { exportCsv, forgetLabels } from "./lib/scanner";
+import { compareHoldings, holdingsOf, type Holdings } from "./lib/compare";
+import { snapshotCsv } from "./lib/csv";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
@@ -30,6 +34,14 @@ export default function App() {
     recordSnapshot(s).then(setHistory).catch((err) => console.warn("Historique non enregistré :", err));
   }, []);
   const [filter, setFilter] = useState<CategoryFilter>("All");
+  const [onlyDoubtful, setOnlyDoubtful] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  // Session : depuis le lancement de l'app (ou « Nouvelle session ») ; la référence est le
+  // premier snapshot affiché.
+  const [session, setSession] = useState<{ startedAt: number; holdings: Holdings } | null>(null);
+  useEffect(() => {
+    if (snapshot && !session) setSession({ startedAt: Date.now(), holdings: holdingsOf(snapshot) });
+  }, [snapshot, session]);
   const updater = useUpdater();
   const scanner = useStashScanner(onSnapshot);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -52,6 +64,7 @@ export default function App() {
   const resetHistory = useCallback(async () => {
     const league = snapshot?.league ?? null;
     setSnapshot(null);
+    setSession(null);
     clearSnapshot();
     await scanner.restart();
     await clearHistory(league).then(setHistory).catch(() => {});
@@ -59,6 +72,7 @@ export default function App() {
 
   const resetAll = useCallback(async () => {
     setSnapshot(null);
+    setSession(null);
     clearSnapshot();
     setFilter("All");
     await scanner.restart();
@@ -66,7 +80,7 @@ export default function App() {
     setSettingsOpen(false);
   }, [scanner]);
 
-  // Case d'origine d'un objet, tant que son onglet a été lu pendant cette session.
+  // Case d'origine d'un objet, tant que son onglet est connu (onglets gardés entre deux lancements).
   const slotOf = (item: SnapshotItem) => {
     const src = item.source;
     return src ? tabs[src.tab]?.scan.slots.find((s) => s.x === src.x && s.y === src.y) : undefined;
@@ -98,13 +112,36 @@ export default function App() {
 
   const totalExalted = Object.values(totals).reduce((a, b) => a + b, 0);
 
-  const visible = useMemo(
+  const inCategory = useMemo(
     () =>
       (snapshot?.items ?? [])
         .filter((i) => filter === "All" || i.category === filter)
         .sort((a, b) => (b.unitExalted ?? 0) * b.quantity - (a.unitExalted ?? 0) * a.quantity),
     [snapshot, filter],
   );
+  const doubtfulCount = inCategory.filter((i) => i.doubtful).length;
+  const showDoubtful = onlyDoubtful && doubtfulCount > 0;
+  const visible = showDoubtful ? inCategory.filter((i) => i.doubtful) : inCategory;
+
+  const sessionGain = useMemo(
+    () =>
+      session && snapshot
+        ? { startedAt: session.startedAt, gainExalted: compareHoldings(session.holdings, snapshot, scanner.prices).totalExalted }
+        : null,
+    [session, snapshot, scanner.prices],
+  );
+
+  const exportVisible = useCallback(async () => {
+    if (!snapshot) return;
+    const stamp = new Date(snapshot.takenAt).toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    try {
+      const path = await exportCsv(`poe2-coffre-${stamp}.csv`, snapshotCsv(visible, currency, rates));
+      setExportStatus(`Exporté : ${path}`);
+      revealItemInDir(path).catch(() => {});
+    } catch (err) {
+      setExportStatus(String(err));
+    }
+  }, [snapshot, visible, currency, rates]);
 
   return (
     <div className="app">
@@ -131,6 +168,7 @@ export default function App() {
       {editing && editingSlot && scanner.prices && (
         <SlotEditor
           slot={editingSlot}
+          fallbackIcon={editing.icon}
           prices={scanner.prices}
           onPick={(id) => {
             scanner.relabel(editingSlot, id).catch(() => {});
@@ -152,7 +190,14 @@ export default function App() {
         </main>
       ) : (
         <>
-          <SnapshotHeader snapshot={snapshot} totalExalted={totalExalted} currency={currency} rates={rates} />
+          <SnapshotHeader
+            snapshot={snapshot}
+            totalExalted={totalExalted}
+            currency={currency}
+            rates={rates}
+            session={sessionGain}
+            onNewSession={() => setSession({ startedAt: Date.now(), holdings: holdingsOf(snapshot) })}
+          />
           <div className="body">
             <CategorySidebar selected={filter} totals={totals} onSelect={setFilter} currency={currency} rates={rates} />
             <main className="content">
@@ -163,6 +208,32 @@ export default function App() {
                 rates={rates}
                 onReset={resetHistory}
               />
+              <ChangesPanel
+                snapshot={snapshot}
+                session={session}
+                history={history}
+                prices={scanner.prices}
+                currency={currency}
+                rates={rates}
+              />
+              <div className="list-toolbar">
+                {doubtfulCount > 0 && (
+                  <button
+                    type="button"
+                    className={`ghost${showDoubtful ? " active" : ""}`}
+                    onClick={() => setOnlyDoubtful((o) => !o)}
+                    title="Objets dont la reconnaissance est incertaine : clique sur l'un d'eux pour le corriger"
+                  >
+                    {showDoubtful ? "Tout afficher" : `À vérifier (${doubtfulCount})`}
+                  </button>
+                )}
+                <span className="muted list-toolbar-status" title={exportStatus ?? undefined}>
+                  {exportStatus}
+                </span>
+                <button type="button" className="ghost" onClick={exportVisible} disabled={visible.length === 0}>
+                  Exporter en CSV
+                </button>
+              </div>
               <ItemGrid
                 items={visible}
                 currency={currency}

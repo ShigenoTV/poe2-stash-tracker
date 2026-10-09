@@ -87,3 +87,25 @@ export function mergeScan(tabs: TabScan[], scan: ScanResult): TabScan[] {
   const id = tabs.reduce((m, t) => Math.max(m, t.id), 0) + 1;
   return [...tabs, { id, scan }];
 }
+
+const KEY = "stashTabs";
+
+/** Onglets lus lors des lancements précédents : le net worth reste complet après un redémarrage. */
+export function loadTabs(): TabScan[] {
+  try {
+    const raw = localStorage.getItem(KEY);
+    const tabs = raw ? (JSON.parse(raw) as TabScan[]) : [];
+    return Array.isArray(tabs) ? tabs.filter((t) => typeof t.id === "number" && Array.isArray(t.scan?.slots)) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTabs(tabs: TabScan[]): void {
+  try {
+    if (tabs.length === 0) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, JSON.stringify(tabs));
+  } catch {
+    // Stockage plein ou indisponible : les onglets restent valables jusqu'à la fermeture.
+  }
+}

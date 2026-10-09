@@ -54,6 +54,28 @@ function iconUrl(image) {
   return image.startsWith("http") ? image : `${POE_CDN}${image.startsWith("/") ? "" : "/"}${image}`;
 }
 
+const round1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * Variations de prix tirées de la sparkline poe.ninja : `data` donne, jour après jour, l'écart
+ * cumulé en % depuis le début des 7 derniers jours. Sur 24 h : les deux derniers points.
+ */
+export function priceChanges(sparkline) {
+  const data = (sparkline?.data ?? []).filter((v) => typeof v === "number");
+  const total = typeof sparkline?.totalChange === "number" ? sparkline.totalChange : null;
+  let day = null;
+  if (data.length >= 2) {
+    const [prev, last] = data.slice(-2);
+    day = ((100 + last) / (100 + prev) - 1) * 100;
+  } else if (data.length === 1) {
+    day = data[0];
+  }
+  return {
+    change24h: day === null || !Number.isFinite(day) ? null : round1(day),
+    change7d: total === null ? null : round1(total),
+  };
+}
+
 /** Transforme une réponse exchange/overview en lignes normalisées. */
 export function normalizeOverview(type, data) {
   const core = data.core ?? {};
@@ -70,6 +92,7 @@ export function normalizeOverview(type, data) {
         icon: iconUrl(meta.image),
         value: line.primaryValue,
         volume: line.volumePrimaryValue ?? null,
+        ...priceChanges(line.sparkline),
       };
     });
 }

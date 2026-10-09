@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { buildSnapshot } from "./snapshot";
-import { mergeScan, type TabScan } from "./stashTabs";
+import { loadTabs, mergeScan, saveTabs, type TabScan } from "./stashTabs";
 import {
   autoScan,
   getPrices,
@@ -14,8 +14,17 @@ import {
 } from "./scanner";
 import type { Snapshot } from "./types";
 
-/** Délai entre deux tours du scan automatique. */
-const AUTO_INTERVAL_MS = 1200;
+/** Délai avant le tour suivant du scan automatique, selon ce que le tour a vu. */
+const DELAY_MS = {
+  /** Coffre ouvert, rien n'a bougé ou onglet lu : rythme normal. */
+  idle: 1200,
+  /** La zone bouge : on revient vite pour lire l'onglet dès qu'il est stable. */
+  changing: 500,
+  /** Coffre fermé : inutile de capturer aussi souvent. */
+  noStash: 3000,
+  /** Jeu absent ou capture impossible. */
+  error: 5000,
+};
 const AUTO_KEY = "autoScan";
 
 function loadAuto(): boolean {
@@ -31,7 +40,7 @@ function loadAuto(): boolean {
  * et tient à jour les prix.
  */
 export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
-  const [tabs, setTabs] = useState<TabScan[]>([]);
+  const [tabs, setTabs] = useState<TabScan[]>(loadTabs);
   const [prices, setPrices] = useState<PriceFile | null>(null);
   const [auto, setAutoState] = useState(loadAuto);
   /** `false` quand le dernier tour n'a pas trouvé de coffre ouvert. */
@@ -54,7 +63,10 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     if (isTauri()) getPrices().then((p) => setPrices((cur) => cur ?? p)).catch(() => {});
   }, []);
 
-  // Le snapshot couvre tous les onglets vus depuis le lancement (ou la remise à zéro).
+  useEffect(() => saveTabs(tabs), [tabs]);
+
+  // Le snapshot couvre tous les onglets lus, y compris lors des lancements précédents
+  // (jusqu'à la remise à zéro).
   useEffect(() => {
     if (prices && tabs.length > 0) onSnapshot(buildSnapshot(tabs.map((t) => t.scan), prices));
   }, [tabs, prices, onSnapshot]);
@@ -110,6 +122,7 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     let stopped = false;
     (async () => {
       while (!stopped && autoRef.current) {
+        let delay = DELAY_MS.idle;
         try {
           const gen = generation.current;
           const res = await autoScan();
@@ -121,12 +134,16 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
             if (!res.scan.identifyError) await ensurePrices();
           } else if (res.status === "noStash") {
             setStashOpen(false);
+            delay = DELAY_MS.noStash;
+          } else if (res.status === "changing") {
+            delay = DELAY_MS.changing;
           }
           setError(null);
         } catch (err) {
           setError(String(err));
+          delay = DELAY_MS.error;
         }
-        await new Promise((r) => setTimeout(r, AUTO_INTERVAL_MS));
+        await new Promise((r) => setTimeout(r, delay));
       }
     })();
     return () => {

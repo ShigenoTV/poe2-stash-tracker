@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
-import type { PriceFile, ScannedSlot } from "../lib/scanner";
+import { slotIcon, type PriceFile, type ScannedSlot } from "../lib/scanner";
 
 interface Props {
   slot: ScannedSlot;
+  /** Icône de l'objet actuel, quand le scan n'a pas gardé l'image de la case. */
+  fallbackIcon?: string;
   prices: PriceFile;
   onPick: (itemId: string) => void;
   onClose: () => void;
 }
 
 /** Choix de l'objet d'une case : suggestions par icône, puis recherche par nom. */
-export function SlotEditor({ slot, prices, onPick, onClose }: Props) {
+export function SlotEditor({ slot, fallbackIcon, prices, onPick, onClose }: Props) {
   const [query, setQuery] = useState("");
   const byId = useMemo(() => new Map(prices.items.map((i) => [i.id, i])), [prices]);
 
@@ -25,7 +27,7 @@ export function SlotEditor({ slot, prices, onPick, onClose }: Props) {
   return (
     <div className="slot-editor" role="dialog" aria-label="Choisir l'objet">
       <div className="slot-editor-head">
-        <img src={`data:image/png;base64,${slot.iconPngBase64}`} alt="" />
+        {(slotIcon(slot) ?? fallbackIcon) && <img src={slotIcon(slot) ?? fallbackIcon} alt="" />}
         <input
           autoFocus
           placeholder="Rechercher un objet…"

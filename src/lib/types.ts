@@ -68,6 +68,11 @@ export interface SnapshotItem {
   stash?: string;
   /** Première case scannée de l'objet (onglet, position), pour pouvoir le corriger. */
   source?: { tab: number; x: number; y: number };
+  /** Reconnaissance incertaine : le joueur est invité à vérifier l'objet. */
+  doubtful?: boolean;
+  /** Variation du prix en %, sur 24 h et 7 jours, quand poe.ninja la fournit. */
+  change24h?: number | null;
+  change7d?: number | null;
 }
 
 export interface Snapshot {

@@ -1,6 +1,7 @@
 //! Historique du net worth, enregistré dans `history.json` du dossier de données.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
@@ -18,6 +19,9 @@ pub struct HistoryPoint {
     /// Absent des points enregistrés avant l'affichage en Chaos.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chaos: Option<f64>,
+    /// Quantité de chaque objet identifié, pour comparer deux moments (absent des anciens points).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<BTreeMap<String, u32>>,
 }
 
 #[derive(Default)]
@@ -99,7 +103,7 @@ mod tests {
     use super::*;
 
     fn p(at: i64, league: &str, divine: f64) -> HistoryPoint {
-        HistoryPoint { at, league: league.into(), divine, exalted: divine * 400.0, chaos: None }
+        HistoryPoint { at, league: league.into(), divine, exalted: divine * 400.0, chaos: None, items: None }
     }
 
     #[test]

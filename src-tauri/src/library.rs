@@ -14,6 +14,12 @@ const USER_AGENT: &str = concat!("poe2-stash-tracker/", env!("CARGO_PKG_VERSION"
 const MEMORY_MATCH: f32 = 0.06;
 /// Écart de distance en dessous duquel deux icônes sont jugées identiques (paliers d'une monnaie).
 const TIER_TIE: f32 = 0.01;
+/// Au-delà, la suggestion poe.ninja n'est pas comptée (même seuil côté interface).
+const NINJA_MAX_DISTANCE: f32 = 0.12;
+/// Suggestion comptée mais à vérifier : icône assez éloignée…
+const DOUBT_DISTANCE: f32 = 0.095;
+/// … ou un autre objet presque aussi proche.
+const DOUBT_MARGIN: f32 = 0.008;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +74,38 @@ pub enum MatchSource {
 pub struct Identification {
     pub source: MatchSource,
     pub candidates: Vec<Candidate>,
+    /// Suggestion poe.ninja retenue mais incertaine : l'interface invite à la vérifier.
+    pub doubtful: bool,
+}
+
+impl Identification {
+    /// Objet retenu sans hésitation (case mémorisée ou suggestion nette).
+    pub fn confident(&self) -> bool {
+        match self.source {
+            MatchSource::Memory => true,
+            MatchSource::Ninja => !self.doubtful && self.candidates.first().is_some_and(|c| c.distance <= NINJA_MAX_DISTANCE),
+        }
+    }
+}
+
+/// Nom sans le palier (« Greater Chaos Orb » → « Chaos Orb ») : les paliers partagent l'icône
+/// et sont départagés par la marque de la case, ce n'est pas une hésitation.
+fn base_name(name: &str) -> &str {
+    name.strip_prefix("Perfect ").or_else(|| name.strip_prefix("Greater ")).unwrap_or(name)
+}
+
+/// La suggestion retenue (en tête) est-elle incertaine ?
+fn is_doubtful<'a>(candidates: &[Candidate], name: impl Fn(&str) -> Option<&'a str>) -> bool {
+    let Some(first) = candidates.first() else { return false };
+    let best = candidates.iter().map(|c| c.distance).fold(f32::MAX, f32::min);
+    if first.distance > NINJA_MAX_DISTANCE {
+        return false; // Pas comptée du tout : objet non identifié, pas douteux.
+    }
+    let base = name(&first.item_id).map(base_name);
+    first.distance > DOUBT_DISTANCE
+        || candidates[1..]
+            .iter()
+            .any(|c| c.distance <= best + DOUBT_MARGIN && name(&c.item_id).map(base_name) != base)
 }
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -203,13 +241,13 @@ impl Library {
         let memory = self.memory.as_deref().unwrap_or_default();
         let remembered = icons::rank(slot, memory.iter().map(|l| (l.item_id.as_str(), &l.descriptor)), false, 1);
         if remembered.first().is_some_and(|c| c.distance <= MEMORY_MATCH) {
-            return Identification { source: MatchSource::Memory, candidates: remembered };
+            return Identification { source: MatchSource::Memory, candidates: remembered, doubtful: false };
         }
         let mut candidates = icons::rank(slot, self.references.iter().map(|(id, d)| (id.as_str(), d)), true, 5);
-        if let Some(prices) = &self.prices {
-            prefer_tier(&mut candidates, tier, |id| prices.items.iter().find(|i| i.id == id).map(|i| i.name.as_str()));
-        }
-        Identification { source: MatchSource::Ninja, candidates }
+        let name = |id: &str| self.prices.as_ref()?.items.iter().find(|i| i.id == id).map(|i| i.name.as_str());
+        prefer_tier(&mut candidates, tier, name);
+        let doubtful = is_doubtful(&candidates, name);
+        Identification { source: MatchSource::Ninja, candidates, doubtful }
     }
 
     pub async fn remember(&mut self, app: &tauri::AppHandle, item_id: String, descriptor: Descriptor) -> Result<(), String> {
@@ -327,6 +365,25 @@ mod tests {
 
     fn c(id: &str, distance: f32) -> Candidate {
         Candidate { item_id: id.into(), distance }
+    }
+
+    #[test]
+    fn doubt_ignores_tiers_but_not_other_items() {
+        let names = |id: &str| Some(match id {
+            "chaos" => "Chaos Orb",
+            "greater" => "Greater Chaos Orb",
+            "etcher" => "Arcanist's Etcher",
+            "key" => "Cryptic Key",
+            _ => "Vaal Orb",
+        });
+        // Paliers d'une même monnaie à égalité : pas de doute.
+        assert!(!is_doubtful(&[c("chaos", 0.05), c("greater", 0.05)], names));
+        // Deux objets différents presque aussi proches : doute.
+        assert!(is_doubtful(&[c("etcher", 0.03), c("key", 0.034)], names));
+        assert!(!is_doubtful(&[c("etcher", 0.03), c("key", 0.045)], names));
+        // Icône lointaine : doute ; trop lointaine : non comptée, donc pas « douteuse ».
+        assert!(is_doubtful(&[c("vaal", 0.1)], names));
+        assert!(!is_doubtful(&[c("vaal", 0.2)], names));
     }
 
     #[test]

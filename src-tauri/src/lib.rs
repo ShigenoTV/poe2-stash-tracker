@@ -1,4 +1,5 @@
 mod capture;
+mod export;
 mod history;
 pub mod icons;
 mod library;
@@ -27,7 +28,8 @@ pub fn run() {
             library::label_slot,
             history::load_history,
             history::record_history,
-            history::clear_history
+            history::clear_history,
+            export::export_csv
         ]);
 
     #[cfg(desktop)]

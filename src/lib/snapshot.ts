@@ -1,4 +1,4 @@
-import { chosenItem, type PriceFile, type ScanResult } from "./scanner";
+import { chosenItem, slotIcon, type PriceFile, type ScanResult } from "./scanner";
 import { CATEGORY_LABEL, categoryOf, type Category, type Snapshot, type SnapshotItem } from "./types";
 
 /** Regroupe les cases scannées par objet et les valorise avec le fichier de prix. */
@@ -30,14 +30,20 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
         category: "Other",
         quantity: slot.quantity,
         unitExalted: null,
-        icon: `data:image/png;base64,${slot.iconPngBase64}`,
+        icon: slotIcon(slot),
         source: { tab, x: slot.x, y: slot.y },
       });
       continue;
     }
+    const doubtful = chosen!.doubtful;
     const existing = items.get(priced.id);
     if (existing) {
       existing.quantity += slot.quantity;
+      // La case à vérifier devient celle qu'on ouvre en cliquant sur l'objet.
+      if (doubtful && !existing.doubtful) {
+        existing.doubtful = true;
+        existing.source = { tab, x: slot.x, y: slot.y };
+      }
     } else {
       items.set(priced.id, {
         id: priced.id,
@@ -45,8 +51,10 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
         category: categoryOf(priced.category),
         quantity: slot.quantity,
         unitExalted: priced.value * exaltedPerDivine,
-        icon: priced.icon ?? `data:image/png;base64,${slot.iconPngBase64}`,
+        icon: priced.icon ?? slotIcon(slot),
         source: { tab, x: slot.x, y: slot.y },
+        ...(doubtful ? { doubtful } : {}),
+        ...priceChanges(priced),
       });
     }
   }
@@ -63,6 +71,10 @@ export function buildSnapshot(scans: ScanResult[], prices: PriceFile, takenAt = 
   };
 }
 
+function priceChanges(priced: PriceFile["items"][number] | undefined): Pick<SnapshotItem, "change24h" | "change7d"> {
+  return { change24h: priced?.change24h ?? null, change7d: priced?.change7d ?? null };
+}
+
 /** Revalorise un snapshot enregistré avec un nouveau fichier de prix (actualisation, autre ligue). */
 export function revalue(snapshot: Snapshot, prices: PriceFile): Snapshot {
   const exaltedPerDivine = prices.rates.exalted ?? 1;
@@ -74,7 +86,7 @@ export function revalue(snapshot: Snapshot, prices: PriceFile): Snapshot {
     chaosPerDivine: prices.rates.chaos,
     items: snapshot.items.map((item) => {
       const priced = byId.get(item.id);
-      return { ...item, unitExalted: priced ? priced.value * exaltedPerDivine : null };
+      return { ...item, unitExalted: priced ? priced.value * exaltedPerDivine : null, ...priceChanges(priced) };
     }),
   };
 }

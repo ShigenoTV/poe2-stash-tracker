@@ -1,7 +1,7 @@
 //! Capture de la fenêtre de PoE2.
 //!
 //! On tente d'abord Windows Graphics Capture (GPU, fonctionne même si la fenêtre est
-//! recouverte), puis on retombe sur GDI (`PrintWindow`, puis copie de l'écran) si WGC
+//! recouverte, session gardée ouverte entre deux scans), puis on retombe sur GDI (`PrintWindow`, puis copie de l'écran) si WGC
 //! est indisponible, expire ou renvoie une image noire.
 
 #![cfg_attr(not(windows), allow(dead_code))]
@@ -46,7 +46,7 @@ pub fn capture_game_window() -> Result<Captured, String> {
 #[cfg(windows)]
 mod win {
     use super::{looks_black, Captured, GAME_WINDOW_TITLE, GEFORCE_NOW_TITLE};
-    use std::sync::{mpsc, Mutex};
+    use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{
@@ -56,7 +56,7 @@ mod win {
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
     use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic};
-    use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
+    use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
     use windows_capture::frame::Frame;
     use windows_capture::graphics_capture_api::InternalCaptureControl;
     use windows_capture::settings::{
@@ -67,35 +67,80 @@ mod win {
 
     /// `PW_RENDERFULLCONTENT` : demande à DWM le contenu réel, y compris DirectX.
     const PW_RENDERFULLCONTENT: PRINT_WINDOW_FLAGS = PRINT_WINDOW_FLAGS(2);
-    const WGC_TIMEOUT: Duration = Duration::from_secs(3);
+    /// Attente d'une image sur la session déjà ouverte (le jeu redessine en continu).
+    const LIVE_TIMEOUT: Duration = Duration::from_millis(800);
+    /// Attente de la première image d'une session neuve.
+    const START_TIMEOUT: Duration = Duration::from_secs(3);
 
-    type FrameSender = Mutex<mpsc::Sender<(u32, u32, Vec<u8>)>>;
+    type Frame3 = (u32, u32, Vec<u8>);
+    /// Demande d'image en attente : le prochain frame reçu y est copié, les autres sont ignorés.
+    type FrameRequest = Arc<Mutex<Option<mpsc::Sender<Frame3>>>>;
 
-    struct OneFrame {
-        tx: FrameSender,
+    struct OnDemand {
+        request: FrameRequest,
     }
 
-    impl GraphicsCaptureApiHandler for OneFrame {
-        type Flags = FrameSender;
+    impl GraphicsCaptureApiHandler for OnDemand {
+        type Flags = FrameRequest;
         type Error = String;
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-            Ok(Self { tx: ctx.flags })
+            Ok(Self { request: ctx.flags })
         }
 
         fn on_frame_arrived(
             &mut self,
             frame: &mut Frame,
-            capture_control: InternalCaptureControl,
+            _capture_control: InternalCaptureControl,
         ) -> Result<(), Self::Error> {
+            // Aucune copie GPU → CPU tant que personne n'a demandé d'image.
+            let Some(tx) = self.request.lock().map_err(|e| e.to_string())?.take() else {
+                return Ok(());
+            };
             let buffer = frame.buffer().map_err(|e| e.to_string())?;
             let (w, h) = (buffer.width(), buffer.height());
             let mut scratch = Vec::new();
             let pixels = buffer.as_nopadding_buffer(&mut scratch).to_vec();
-            let _ = self.tx.lock().map_err(|e| e.to_string())?.send((w, h, pixels));
-            capture_control.stop();
+            let _ = tx.send((w, h, pixels));
             Ok(())
         }
+    }
+
+    /// Session de capture gardée ouverte d'un scan à l'autre : la démarrer coûte bien plus cher
+    /// que de lire une image (et le scan automatique en lit une par seconde).
+    struct Live {
+        hwnd: isize,
+        control: CaptureControl<OnDemand, String>,
+        request: FrameRequest,
+    }
+
+    static LIVE: Mutex<Option<Live>> = Mutex::new(None);
+
+    fn start_session(window: Window) -> Result<Live, String> {
+        let request: FrameRequest = Arc::default();
+        let settings = Settings::new(
+            window,
+            CursorCaptureSettings::WithoutCursor,
+            DrawBorderSettings::WithoutBorder,
+            SecondaryWindowSettings::Default,
+            // Inutile de recevoir plus d'images que le scan n'en lit.
+            MinimumUpdateIntervalSettings::Custom(Duration::from_millis(100)),
+            DirtyRegionSettings::Default,
+            ColorFormat::Rgba8,
+            request.clone(),
+        );
+        let control = OnDemand::start_free_threaded(settings).map_err(|e| format!("WGC : {e}"))?;
+        Ok(Live { hwnd: window.as_raw_hwnd() as isize, control, request })
+    }
+
+    fn next_frame(live: &Live, timeout: Duration) -> Option<Frame3> {
+        let (tx, rx) = mpsc::channel();
+        *live.request.lock().ok()? = Some(tx);
+        let frame = rx.recv_timeout(timeout).ok();
+        if let Ok(mut pending) = live.request.lock() {
+            pending.take();
+        }
+        frame
     }
 
     fn find_window() -> Result<Window, String> {
@@ -105,21 +150,25 @@ mod win {
     }
 
     fn capture_wgc(window: Window) -> Result<Captured, String> {
-        let (tx, rx) = mpsc::channel();
-        let settings = Settings::new(
-            window,
-            CursorCaptureSettings::WithoutCursor,
-            DrawBorderSettings::WithoutBorder,
-            SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
-            DirtyRegionSettings::Default,
-            ColorFormat::Rgba8,
-            Mutex::new(tx),
-        );
-        let control = OneFrame::start_free_threaded(settings).map_err(|e| format!("WGC : {e}"))?;
-        let result = rx.recv_timeout(WGC_TIMEOUT);
-        let _ = control.stop();
-        let (width, height, rgba) = result.map_err(|_| "WGC : aucune image reçue".to_string())?;
+        let mut live = LIVE.lock().map_err(|e| e.to_string())?;
+        let hwnd = window.as_raw_hwnd() as isize;
+        if live.as_ref().is_some_and(|l| l.hwnd != hwnd || l.control.is_finished()) {
+            if let Some(old) = live.take() {
+                let _ = old.control.stop();
+            }
+        }
+        if let Some(frame) = live.as_ref().and_then(|l| next_frame(l, LIVE_TIMEOUT)) {
+            return Ok(Captured { width: frame.0, height: frame.1, rgba: frame.2 });
+        }
+        // Pas de session, ou plus d'image (fenêtre figée) : une session neuve envoie
+        // toujours une première image.
+        if let Some(old) = live.take() {
+            let _ = old.control.stop();
+        }
+        let session = start_session(window)?;
+        let frame = next_frame(&session, START_TIMEOUT);
+        *live = Some(session);
+        let (width, height, rgba) = frame.ok_or("WGC : aucune image reçue")?;
         Ok(Captured { width, height, rgba })
     }
 
