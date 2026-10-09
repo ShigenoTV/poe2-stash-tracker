@@ -1,6 +1,6 @@
 [package]
 name = "poe2-stash-tracker"
-version = "0.0.3"
+version = "0.0.4"
 description = "Tracker de coffres et de net worth pour Path of Exile 2"
 authors = ["ShigenoTV"]
 edition = "2021"
