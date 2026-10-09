@@ -54,7 +54,7 @@ export function SettingsPanel({ scanner, onResetHistory, onResetAll, onClose }: 
       <div className="settings-row">
         <span>
           Courbe du net worth
-          <small className="muted">Efface l'historique de la ligue affichée.</small>
+          <small className="muted">Efface l'historique de la ligue affichée et les onglets lus.</small>
         </span>
         <ConfirmButton label="Remettre à zéro" onConfirm={onResetHistory} />
       </div>

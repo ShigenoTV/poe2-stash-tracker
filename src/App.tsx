@@ -48,9 +48,14 @@ export default function App() {
     });
   }, [prices, tabs.length]);
 
-  const resetHistory = useCallback(() => {
-    if (snapshot) clearHistory(snapshot.league).then(setHistory).catch(() => {});
-  }, [snapshot]);
+  // Les onglets lus sont vidés aussi : sinon le prochain scan les recompte aussitôt.
+  const resetHistory = useCallback(async () => {
+    const league = snapshot?.league ?? null;
+    setSnapshot(null);
+    clearSnapshot();
+    await scanner.restart();
+    await clearHistory(league).then(setHistory).catch(() => {});
+  }, [snapshot, scanner]);
 
   const resetAll = useCallback(async () => {
     setSnapshot(null);

@@ -93,7 +93,11 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     );
   }
 
+  /** Incrémenté à chaque remise à zéro : un scan lancé avant est ignoré. */
+  const generation = useRef(0);
+
   async function restart() {
+    generation.current += 1;
     setTabs([]);
     await resetAutoScan().catch(() => {});
   }
@@ -107,7 +111,9 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     (async () => {
       while (!stopped && autoRef.current) {
         try {
+          const gen = generation.current;
           const res = await autoScan();
+          if (gen !== generation.current) continue;
           if (res.status === "scanned") {
             setTabs((t) => mergeScan(t, res.scan));
             setStashOpen(true);
