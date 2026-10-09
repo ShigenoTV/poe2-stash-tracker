@@ -40,3 +40,15 @@ describe("buildSnapshot", () => {
     ]);
   });
 });
+
+describe("categoryOf", () => {
+  it("range chaque type poe.ninja dans l'onglet du jeu", async () => {
+    const { categoryOf } = await import("./types");
+    expect(categoryOf("Breach")).toBe("Breach");
+    expect(categoryOf("Abyss")).toBe("Abyss");
+    expect(categoryOf("Expedition")).toBe("Expedition");
+    expect(categoryOf("Fragments")).toBe("Fragment");
+    expect(categoryOf("Runes")).toBe("Socketable");
+    expect(categoryOf("UncutGems")).toBe("Other");
+  });
+});

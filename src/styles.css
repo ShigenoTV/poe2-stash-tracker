@@ -93,6 +93,9 @@ button { font: inherit; color: inherit; }
 .cat-socketable { background: var(--cat-socketable); }
 .cat-ritual { background: var(--cat-ritual); }
 .cat-fragment { background: #a58fd1; }
+.cat-breach { background: #c977d6; }
+.cat-abyss { background: #4fb3a9; }
+.cat-expedition { background: #d9a05b; }
 .cat-other { background: #6c6a66; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); }
 

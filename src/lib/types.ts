@@ -1,3 +1,4 @@
+/** Les onglets spéciaux du coffre, dans l'ordre du jeu, puis « Autres ». */
 export const CATEGORIES = [
   "Currency",
   "Fragment",
@@ -5,6 +6,9 @@ export const CATEGORIES = [
   "Delirium",
   "Socketable",
   "Ritual",
+  "Breach",
+  "Abyss",
+  "Expedition",
   "Other",
 ] as const;
 
@@ -17,6 +21,9 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   Delirium: "Delirium",
   Socketable: "Socketable",
   Ritual: "Ritual",
+  Breach: "Breach",
+  Abyss: "Abyss",
+  Expedition: "Expedition",
   Other: "Autres",
 };
 
@@ -26,8 +33,13 @@ export function categoryOf(ninjaType: string): Category {
     case "Currency":
       return "Currency";
     case "Fragments":
-    case "Breach":
       return "Fragment";
+    case "Breach":
+      return "Breach";
+    case "Abyss":
+      return "Abyss";
+    case "Expedition":
+      return "Expedition";
     case "Essences":
       return "Essence";
     case "Delirium":
