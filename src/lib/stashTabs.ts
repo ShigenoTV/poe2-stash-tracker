@@ -77,8 +77,10 @@ export function mergeScan(tabs: TabScan[], scan: ScanResult): TabScan[] {
     best = named;
     bestScore = 1;
   }
-  // Deux noms lus différents : deux onglets distincts, même à contenu semblable.
-  const otherName = (t: TabScan) => !!scan.tabName && !!t.scan.tabName && t.scan.tabName !== scan.tabName;
+  // Deux noms lus ou deux types d'onglet différents : deux onglets distincts, même à contenu semblable.
+  const differs = (a?: string | null, b?: string | null) => !!a && !!b && a !== b;
+  const otherName = (t: TabScan) =>
+    differs(scan.tabName, t.scan.tabName) || differs(scan.stashType, t.scan.stashType);
   for (const tab of named ? [] : tabs.filter((t) => !otherName(t))) {
     const score = overlap(tab.scan, scan);
     if (score > bestScore) {
@@ -90,7 +92,11 @@ export function mergeScan(tabs: TabScan[], scan: ScanResult): TabScan[] {
     if (scan.slots.length < best.scan.slots.length * MIN_KEPT) return tabs;
     // Doublon : un autre onglet aux mêmes objets reconnus, aux mêmes places.
     const twin = (t: TabScan) => t !== best && !otherName(t) && overlap(t.scan, scan, true) >= SAME_TAB;
-    const next = { ...scan, tabName: scan.tabName ?? best.scan.tabName };
+    const next = {
+      ...scan,
+      tabName: scan.tabName ?? best.scan.tabName,
+      stashType: scan.stashType ?? best.scan.stashType,
+    };
     return tabs.filter((t) => !twin(t)).map((t) => (t === best ? { ...t, scan: next } : t));
   }
   const id = tabs.reduce((m, t) => Math.max(m, t.id), 0) + 1;

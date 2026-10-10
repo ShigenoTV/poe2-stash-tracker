@@ -105,11 +105,12 @@ export function expandTabName(name: string): string {
 }
 
 /**
- * Nomme chaque onglet scanné : nom lu en jeu s'il a pu l'être, sinon la catégorie la plus
- * représentée parmi ses objets reconnus (« Expedition », « Fragment »…), sinon « Onglet N ».
+ * Nomme chaque onglet scanné : type d'onglet spécial reconnu à sa disposition, sinon nom lu en
+ * jeu, sinon la catégorie la plus représentée parmi ses objets reconnus, sinon « Onglet N ».
  */
 function nameTabs(scans: ScanResult[], byId: Map<string, PriceFile["items"][number]>): string[] {
   return scans.map((scan, tab) => {
+    if (scan.stashType) return scan.stashType;
     if (scan.tabName) return expandTabName(scan.tabName);
     const counts = new Map<Category, number>();
     for (const slot of scan.slots) {

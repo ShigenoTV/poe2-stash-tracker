@@ -3,6 +3,7 @@
 use crate::capture;
 use crate::icons;
 use crate::library::{Identification, LibraryState};
+use crate::stashtype;
 use crate::tabname;
 use crate::vision::{self, Rect};
 use base64::Engine;
@@ -66,6 +67,8 @@ pub struct ScanResult {
     pub identify_error: Option<String>,
     /// Nom de l'onglet sélectionné, lu en jeu ; `None` s'il n'a pas pu être lu.
     pub tab_name: Option<String>,
+    /// Type d'onglet spécial reconnu à sa disposition (« Breach »…), `None` pour un onglet ordinaire.
+    pub stash_type: Option<String>,
 }
 
 fn png_base64(img: &RgbImage) -> Result<String, String> {
@@ -106,7 +109,7 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
             })
         })
         .collect::<Result<_, String>>()?;
-    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None })
+    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None, stash_type: None })
 }
 
 /// Rectangle en pixels d'une zone exprimée en fractions de l'image.
@@ -229,9 +232,11 @@ pub async fn auto_scan(
         return Ok(AutoScanResult::NoStash);
     }
     identify_all(&app, &library, &mut scan).await?;
-    scan.tab_name = tauri::async_runtime::spawn_blocking(move || tabname::read(&screen))
-        .await
-        .map_err(|e| e.to_string())?;
+    (scan.stash_type, scan.tab_name) = tauri::async_runtime::spawn_blocking(move || {
+        (stashtype::detect(&screen).map(String::from), tabname::read(&screen))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(AutoScanResult::Scanned { scan })
 }
 

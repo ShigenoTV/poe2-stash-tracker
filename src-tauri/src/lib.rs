@@ -8,6 +8,7 @@ mod ratelimit;
 mod scan;
 pub mod vision;
 mod stash;
+pub mod stashtype;
 #[cfg(desktop)]
 mod tabname;
 mod tray;

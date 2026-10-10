@@ -52,6 +52,8 @@ export interface ScanResult {
   identifyError: string | null;
   /** Nom de l'onglet lu en jeu ; absent des scans plus anciens. */
   tabName?: string | null;
+  /** Type d'onglet spécial reconnu à sa disposition (« Breach »…). */
+  stashType?: string | null;
 }
 
 export type AutoScanResult =

@@ -53,6 +53,11 @@ describe("onglet d'origine", () => {
     const tab: ScanResult = { slotSide: 70, identifyError: null, tabName: "brea", slots: [slot(0, 100, "simulacrum-splinter")] };
     expect(buildSnapshot([tab], prices).items[0].stash).toBe("Breach");
   });
+
+  it("préfère le type d'onglet reconnu à sa disposition", () => {
+    const tab: ScanResult = { slotSide: 70, identifyError: null, tabName: "Craft", stashType: "Currency", slots: [slot(0, 100, "simulacrum-splinter")] };
+    expect(buildSnapshot([tab], prices).items[0].stash).toBe("Currency");
+  });
 });
 
 describe("categoryOf", () => {
