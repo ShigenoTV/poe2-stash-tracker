@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import type { AlertSettings } from "../lib/alerts";
 import { listLeagues, type League } from "../lib/scanner";
 import type { StashScanner } from "../lib/useStashScanner";
@@ -21,13 +22,32 @@ export function SettingsPanel({ scanner, alerts, onAlertsChange, onResetHistory,
   const [selected, setSelected] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
+  // Démarrage avec Windows (l'app s'ouvre alors directement dans la zone de notification).
+  const [autostart, setAutostart] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!isTauri()) return;
+    import("@tauri-apps/plugin-autostart")
+      .then((a) => a.isEnabled())
+      .then(setAutostart)
+      .catch(() => setAutostart(null));
+  }, []);
+  async function toggleAutostart(on: boolean) {
+    try {
+      const a = await import("@tauri-apps/plugin-autostart");
+      await (on ? a.enable() : a.disable());
+      setAutostart(await a.isEnabled());
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   useEffect(() => {
     listLeagues()
       .then((l) => {
         setLeagues(l.leagues);
         setSelected(l.selected ?? "");
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(`Ligues indisponibles : ${e}`));
   }, []);
 
   function pick(id: string) {
@@ -55,7 +75,22 @@ export function SettingsPanel({ scanner, alerts, onAlertsChange, onResetHistory,
           ))}
         </select>
       </label>
-      {error && <p className="update-error">Ligues indisponibles : {error}</p>}
+      {error && <p className="update-error">{error}</p>}
+
+      {autostart !== null && (
+        <label className="settings-row">
+          <span>
+            Démarrer avec Windows
+            <small className="muted">L'app se lance dans la zone de notification et lit le coffre en arrière-plan.</small>
+          </span>
+          <input
+            type="checkbox"
+            className="settings-check"
+            checked={autostart}
+            onChange={(e) => toggleAutostart(e.target.checked)}
+          />
+        </label>
+      )}
 
       <label className="settings-row">
         <span>

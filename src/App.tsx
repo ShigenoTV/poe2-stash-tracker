@@ -23,12 +23,13 @@ import {
   type PriceAlert,
 } from "./lib/alerts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
 import { useStashScanner } from "./lib/useStashScanner";
 import { clearSnapshot, loadSnapshot, revalue, saveSnapshot } from "./lib/snapshot";
-import { loadCurrency, saveCurrency, usable, type Currency, type Rates } from "./lib/currency";
+import { formatMoney, fromExalted, loadCurrency, saveCurrency, usable, type Currency, type Rates } from "./lib/currency";
 import { CATEGORIES, type Category, type Snapshot, type SnapshotItem } from "./lib/types";
 import "./styles.css";
 
@@ -137,6 +138,12 @@ export default function App() {
   }, [snapshot]);
 
   const totalExalted = Object.values(totals).reduce((a, b) => a + b, 0);
+
+  // Net worth dans l'infobulle de l'icône de la zone de notification.
+  const trayText = snapshot ? `PoE2 Stash Tracker · ${formatMoney(fromExalted(totalExalted, currency, rates), currency)}` : "PoE2 Stash Tracker";
+  useEffect(() => {
+    if (isTauri()) invoke("set_tray_tooltip", { text: trayText }).catch(() => {});
+  }, [trayText]);
 
   const inCategory = useMemo(
     () =>

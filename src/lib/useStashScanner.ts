@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { buildSnapshot } from "./snapshot";
+import { sleep } from "./sleep";
 import { loadTabs, mergeScan, saveTabs, type TabScan } from "./stashTabs";
 import {
   autoScan,
@@ -156,7 +157,7 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
           setError(String(err));
           delay = DELAY_MS.error;
         }
-        await new Promise((r) => setTimeout(r, delay));
+        await sleep(delay);
       }
     })();
     return () => {
