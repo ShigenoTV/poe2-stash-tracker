@@ -10,8 +10,10 @@ use tokio::sync::Mutex;
 
 const PRICES_BASE: &str = "https://raw.githubusercontent.com/ShigenoTV/poe2-stash-tracker/prices";
 const USER_AGENT: &str = concat!("poe2-stash-tracker/", env!("CARGO_PKG_VERSION"));
-/// En dessous, une case mémorisée est considérée comme le même objet.
-const MEMORY_MATCH: f32 = 0.06;
+/// En dessous, une case mémorisée est considérée comme le même objet. La même case relue
+/// d'une capture à l'autre reste sous 0,005 ; deux Omens différents de même forme descendent
+/// jusqu'à 0,024 : au-delà de ce seuil, une correction s'appliquerait à d'autres Omens.
+const MEMORY_MATCH: f32 = 0.015;
 /// Écart de distance en dessous duquel deux icônes sont jugées identiques (paliers d'une monnaie).
 const TIER_TIE: f32 = 0.01;
 /// Au-delà, la suggestion poe.ninja n'est pas comptée (même seuil côté interface).
@@ -362,6 +364,24 @@ pub async fn label_slot(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vision;
+
+    #[test]
+    fn a_correction_only_applies_to_the_same_item() {
+        // Coffre Ritual de Max : 21 Omens différents, dont beaucoup de même forme.
+        let path = format!("{}/tests/fixtures/stash-ritual-1440.png", env!("CARGO_MANIFEST_DIR"));
+        let img = image::open(path).unwrap().to_rgb8();
+        let slots: Vec<_> = vision::find_filled_slots(&img)
+            .iter()
+            .map(|s| icons::describe_slot(&image::imageops::crop_imm(&img, s.x, s.y, s.w, s.h).to_image()))
+            .collect();
+        assert_eq!(slots.len(), 21);
+        for (i, a) in slots.iter().enumerate() {
+            for b in &slots[i + 1..] {
+                assert!(icons::distance(a, b, false) > MEMORY_MATCH * 1.5);
+            }
+        }
+    }
 
     fn c(id: &str, distance: f32) -> Candidate {
         Candidate { item_id: id.into(), distance }
