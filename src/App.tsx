@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CurrencySelect } from "./components/CurrencySelect";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
+import { AlertsBanner } from "./components/AlertsBanner";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { ItemGrid } from "./components/ItemGrid";
 import { NetWorthChart } from "./components/NetWorthChart";
@@ -12,6 +13,15 @@ import { SlotEditor } from "./components/SlotEditor";
 import { exportCsv, forgetLabels } from "./lib/scanner";
 import { compareHoldings, holdingsOf, type Holdings } from "./lib/compare";
 import { snapshotCsv } from "./lib/csv";
+import {
+  findAlerts,
+  loadAlertSettings,
+  loadSent,
+  saveAlertSettings,
+  saveSent,
+  type AlertSettings,
+  type PriceAlert,
+} from "./lib/alerts";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { SnapshotHeader } from "./components/SnapshotHeader";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
@@ -36,6 +46,22 @@ export default function App() {
   const [filter, setFilter] = useState<CategoryFilter>("All");
   const [onlyDoubtful, setOnlyDoubtful] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+
+  // Alertes de prix : objets détenus dont le prix bouge fort sur 24 h, une fois par jour et par sens.
+  const [alertSettings, setAlertSettingsState] = useState<AlertSettings>(loadAlertSettings);
+  const setAlertSettings = useCallback((s: AlertSettings) => {
+    setAlertSettingsState(s);
+    saveAlertSettings(s);
+  }, []);
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  useEffect(() => {
+    if (!snapshot) return;
+    const sent = new Set(loadSent());
+    const fresh = findAlerts(snapshot, alertSettings, new Date().toISOString().slice(0, 10)).filter((a) => !sent.has(a.key));
+    if (fresh.length === 0) return;
+    saveSent([...sent, ...fresh.map((a) => a.key)]);
+    setAlerts((cur) => [...fresh, ...cur.filter((c) => !fresh.some((f) => f.id === c.id))]);
+  }, [snapshot, alertSettings]);
   // Session : depuis le lancement de l'app (ou « Nouvelle session ») ; la référence est le
   // premier snapshot affiché.
   const [session, setSession] = useState<{ startedAt: number; holdings: Holdings } | null>(null);
@@ -146,6 +172,10 @@ export default function App() {
   return (
     <div className="app">
       <UpdateBanner updater={updater} />
+      <AlertsBanner
+        alerts={alerts}
+        onDismiss={(key) => setAlerts((cur) => (key === null ? [] : cur.filter((a) => a.key !== key)))}
+      />
       <nav className="topbar">
         <ScanControl scanner={scanner} />
         <div className="topbar-right">
@@ -160,6 +190,8 @@ export default function App() {
       {settingsOpen && (
         <SettingsPanel
           scanner={scanner}
+          alerts={alertSettings}
+          onAlertsChange={setAlertSettings}
           onResetHistory={resetHistory}
           onResetAll={resetAll}
           onClose={() => setSettingsOpen(false)}

@@ -26,6 +26,8 @@ const DELAY_MS = {
   error: 5000,
 };
 const AUTO_KEY = "autoScan";
+/** Les prix sont publiés chaque heure : on les relit toutes les 30 minutes (alertes à jour). */
+const PRICE_REFRESH_MS = 30 * 60e3;
 
 function loadAuto(): boolean {
   try {
@@ -64,6 +66,17 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
   }, []);
 
   useEffect(() => saveTabs(tabs), [tabs]);
+
+  // Prix relus en arrière-plan, sans message en cas d'échec : le bouton reste là pour forcer.
+  useEffect(() => {
+    if (!isTauri()) return;
+    const id = setInterval(() => {
+      refreshPrices()
+        .then(setPrices)
+        .catch(() => {});
+    }, PRICE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
 
   // Le snapshot couvre tous les onglets lus, y compris lors des lancements précédents
   // (jusqu'à la remise à zéro).

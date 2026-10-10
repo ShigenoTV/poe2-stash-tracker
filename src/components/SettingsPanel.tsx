@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
+import type { AlertSettings } from "../lib/alerts";
 import { listLeagues, type League } from "../lib/scanner";
 import type { StashScanner } from "../lib/useStashScanner";
 import { ConfirmButton } from "./ConfirmButton";
 
 interface Props {
   scanner: StashScanner;
+  alerts: AlertSettings;
+  onAlertsChange: (s: AlertSettings) => void;
   onResetHistory: () => void;
   onResetAll: () => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ scanner, onResetHistory, onResetAll, onClose }: Props) {
+const CHANGES = [10, 15, 25, 50];
+const HELD = [0.5, 1, 5, 10, 50];
+
+export function SettingsPanel({ scanner, alerts, onAlertsChange, onResetHistory, onResetAll, onClose }: Props) {
   const [leagues, setLeagues] = useState<League[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +56,46 @@ export function SettingsPanel({ scanner, onResetHistory, onResetAll, onClose }: 
         </select>
       </label>
       {error && <p className="update-error">Ligues indisponibles : {error}</p>}
+
+      <label className="settings-row">
+        <span>
+          Alertes de prix
+          <small className="muted">Bandeau dans l'app quand un objet que tu possèdes monte ou chute fort sur 24 h.</small>
+        </span>
+        <input
+          type="checkbox"
+          className="settings-check"
+          checked={alerts.enabled}
+          onChange={(e) => onAlertsChange({ ...alerts, enabled: e.target.checked })}
+        />
+      </label>
+      {alerts.enabled && (
+        <>
+          <label className="settings-row">
+            <span>Variation sur 24 h d'au moins</span>
+            <select value={alerts.minChange} onChange={(e) => onAlertsChange({ ...alerts, minChange: Number(e.target.value) })}>
+              {CHANGES.map((c) => (
+                <option key={c} value={c}>
+                  ± {c} %
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="settings-row">
+            <span>Pour un objet dont tu as au moins</span>
+            <select
+              value={alerts.minHeldDivine}
+              onChange={(e) => onAlertsChange({ ...alerts, minHeldDivine: Number(e.target.value) })}
+            >
+              {HELD.map((h) => (
+                <option key={h} value={h}>
+                  {h.toLocaleString("fr-FR")} div
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
 
       <div className="settings-row">
         <span>

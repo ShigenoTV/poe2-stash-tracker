@@ -257,3 +257,18 @@ button { font: inherit; color: inherit; }
 .list-toolbar .ghost { font-size: 12px; }
 .list-toolbar .ghost.active { border-color: var(--accent); color: var(--accent); }
 .list-toolbar-status { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.alerts {
+  display: flex; align-items: flex-start; gap: 12px; padding: 8px 20px;
+  background: var(--panel-2); border-bottom: 1px solid var(--border);
+}
+.alerts ul { flex: 1; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.alerts li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.alerts img { width: 22px; height: 22px; object-fit: contain; }
+.alerts .ghost { font-size: 12px; }
+.alert-up .alert-arrow { color: #7fc48f; }
+.alert-down .alert-arrow { color: #e8907c; }
+.alert-text { flex: 1; }
+.alert-close { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+.alert-close:hover { color: var(--text); }
+.settings-check { accent-color: var(--accent); width: 16px; height: 16px; }
