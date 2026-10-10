@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSnapshot } from "./snapshot";
+import { buildSnapshot, expandTabName } from "./snapshot";
 import type { PriceFile, ScanResult, ScannedSlot } from "./scanner";
 
 const prices: PriceFile = {
@@ -48,6 +48,11 @@ describe("onglet d'origine", () => {
     const snap = buildSnapshot([tab, empty], prices);
     expect(snap.items.map((i) => i.stash)).toEqual(["Fragment", "Fragment", "Onglet 2"]);
   });
+
+  it("préfère le nom lu en jeu", () => {
+    const tab: ScanResult = { slotSide: 70, identifyError: null, tabName: "brea", slots: [slot(0, 100, "simulacrum-splinter")] };
+    expect(buildSnapshot([tab], prices).items[0].stash).toBe("Breach");
+  });
 });
 
 describe("categoryOf", () => {
@@ -77,5 +82,21 @@ describe("revalue", () => {
     expect(next.chaosPerDivine).toBe(8);
     expect(next.items[0].unitExalted).toBeCloseTo(5);
     expect(next.items[0].source).toEqual({ tab: 0, x: 0, y: 0 });
+  });
+});
+
+describe("expandTabName", () => {
+  it("complète les abréviations de catégorie", () => {
+    expect(expandTabName("brea")).toBe("Breach");
+    expect(expandTabName("cur")).toBe("Currency");
+    expect(expandTabName("fragm")).toBe("Fragment");
+    expect(expandTabName("Socketables")).toBe("Socketable");
+    expect(expandTabName("expedition")).toBe("Expedition");
+  });
+  it("garde les autres noms", () => {
+    expect(expandTabName("Flask")).toBe("Flask");
+    expect(expandTabName("maps")).toBe("maps");
+    expect(expandTabName("1")).toBe("1");
+    expect(expandTabName("Au")).toBe("Au");
   });
 });

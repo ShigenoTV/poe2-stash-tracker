@@ -9,6 +9,7 @@ mod scan;
 pub mod vision;
 mod stash;
 #[cfg(desktop)]
+mod tabname;
 mod tray;
 
 /// Sans zone de notification (mobile), l'infobulle n'existe pas.

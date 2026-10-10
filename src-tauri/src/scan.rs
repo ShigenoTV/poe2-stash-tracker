@@ -3,9 +3,10 @@
 use crate::capture;
 use crate::icons;
 use crate::library::{Identification, LibraryState};
+use crate::tabname;
 use crate::vision::{self, Rect};
 use base64::Engine;
-use image::{imageops, RgbImage};
+use image::{imageops, RgbImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Mutex;
@@ -63,6 +64,8 @@ pub struct ScanResult {
     pub slots: Vec<ScannedSlot>,
     /// Raison pour laquelle les objets n'ont pas pu être identifiés.
     pub identify_error: Option<String>,
+    /// Nom de l'onglet sélectionné, lu en jeu ; `None` s'il n'a pas pu être lu.
+    pub tab_name: Option<String>,
 }
 
 fn png_base64(img: &RgbImage) -> Result<String, String> {
@@ -74,10 +77,8 @@ fn png_base64(img: &RgbImage) -> Result<String, String> {
 
 /// Zone du coffre découpée dans la capture, convertie en RGB : seule la zone est convertie,
 /// pas l'écran entier.
-fn crop_captured(c: capture::Captured, region: Option<Region>) -> Result<RgbImage, String> {
-    let rgba = image::RgbaImage::from_raw(c.width, c.height, c.rgba)
-        .ok_or("Capture : taille d'image incohérente")?;
-    let (x, y, w, h) = region_rect(rgba.width(), rgba.height(), region.unwrap_or_else(|| Region::stash(c.width, c.height)))?;
+fn crop_captured(rgba: &RgbaImage, region: Option<Region>) -> Result<RgbImage, String> {
+    let (x, y, w, h) = region_rect(rgba.width(), rgba.height(), region.unwrap_or_else(|| Region::stash(rgba.width(), rgba.height())))?;
     Ok(RgbImage::from_fn(w, h, |px, py| {
         let [r, g, b, _] = rgba.get_pixel(x + px, y + py).0;
         image::Rgb([r, g, b])
@@ -105,7 +106,7 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
             })
         })
         .collect::<Result<_, String>>()?;
-    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None })
+    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None })
 }
 
 /// Rectangle en pixels d'une zone exprimée en fractions de l'image.
@@ -203,7 +204,9 @@ pub async fn auto_scan(
     let captured = tauri::async_runtime::spawn_blocking(capture::capture_game_window)
         .await
         .map_err(|e| e.to_string())??;
-    let stash = crop_captured(captured, region)?;
+    let screen = RgbaImage::from_raw(captured.width, captured.height, captured.rgba)
+        .ok_or("Capture : taille d'image incohérente")?;
+    let stash = crop_captured(&screen, region)?;
     let thumb = thumbnail(&stash);
 
     {
@@ -226,6 +229,9 @@ pub async fn auto_scan(
         return Ok(AutoScanResult::NoStash);
     }
     identify_all(&app, &library, &mut scan).await?;
+    scan.tab_name = tauri::async_runtime::spawn_blocking(move || tabname::read(&screen))
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(AutoScanResult::Scanned { scan })
 }
 

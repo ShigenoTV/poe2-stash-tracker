@@ -65,3 +65,29 @@ describe("mergeScan : décalage et contenu", () => {
     expect(tabs).toHaveLength(1);
   });
 });
+
+describe("onglets nommés en jeu", () => {
+  const three: [number, number][] = [[30, 40], [111, 40], [192, 40]];
+  const named = (name: string | null, items: string[]): ScanResult => ({
+    ...identified(three, items),
+    tabName: name,
+  });
+  const itemsOf = (s: ScanResult) => s.slots.map((slot) => slot.identification?.candidates[0]?.itemId);
+
+  it("retrouve l'onglet par son nom même si le contenu a changé", () => {
+    const tabs = mergeScan([], named("cur", ["a", "b", "c"]));
+    const next = mergeScan(tabs, named("cur", ["x", "y", "z"]));
+    expect(next).toHaveLength(1);
+    expect(itemsOf(next[0].scan)).toEqual(["x", "y", "z"]);
+  });
+
+  it("sépare deux onglets de noms différents au contenu identique", () => {
+    const tabs = mergeScan([], named("cur", ["a", "b", "c"]));
+    expect(mergeScan(tabs, named("cur2", ["a", "b", "c"]))).toHaveLength(2);
+  });
+
+  it("garde le nom connu quand il n'a pas pu être relu", () => {
+    const tabs = mergeScan([], named("brea", ["a", "b", "c"]));
+    expect(mergeScan(tabs, named(null, ["a", "b", "c"]))[0].scan.tabName).toBe("brea");
+  });
+});

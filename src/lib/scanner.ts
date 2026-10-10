@@ -50,6 +50,8 @@ export interface ScanResult {
   slotSide: number | null;
   slots: ScannedSlot[];
   identifyError: string | null;
+  /** Nom de l'onglet lu en jeu ; absent des scans plus anciens. */
+  tabName?: string | null;
 }
 
 export type AutoScanResult =
