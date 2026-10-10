@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Lancement à la main (onglet Actions) pour obtenir un installeur de test.
+  workflow_dispatch:
 
 jobs:
   check:
@@ -27,11 +29,12 @@ jobs:
       - run: npm run build
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
-  # Installeur Windows de test (pas une release) : téléchargeable depuis l'onglet Actions.
+  # Installeur Windows de test (pas une release) : seulement sur demande, la release construit
+  # déjà l'installeur. Téléchargeable depuis l'onglet Actions.
   windows-build:
     runs-on: windows-latest
     needs: check
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
