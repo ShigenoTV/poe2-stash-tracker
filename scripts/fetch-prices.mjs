@@ -8,7 +8,6 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BASE_ITEMS_URL, EXCHANGE_URL, applyExchange, compareReport, exchangePrices, lastHours, matchItems } from "./exchange.mjs";
 
 const BASE = "https://poe.ninja/poe2/api/economy";
 const USER_AGENT =
@@ -147,42 +146,6 @@ async function mirrorIcons(outDir, urls) {
   console.log(`${ok}/${urls.length} icônes copiées`);
 }
 
-/**
- * Marchés du Currency Exchange des 24 dernières heures complètes, plus la table des objets du jeu.
- * `null` si l'API ne répond pas : les prix poe.ninja sont alors gardés tels quels.
- */
-async function fetchExchange() {
-  try {
-    const baseItems = await getJson(BASE_ITEMS_URL);
-    const hours = [];
-    for (const ts of lastHours(Date.now(), 24)) {
-      const data = await getJson(`${EXCHANGE_URL}/${ts}`);
-      hours.push(data.markets ?? []);
-      await sleep(1000);
-    }
-    console.log(`Currency Exchange : ${hours.flat().length} marchés sur ${hours.length} h`);
-    return { baseItems, hours };
-  } catch (err) {
-    console.warn(`Currency Exchange indisponible, prix poe.ninja seuls : ${err.message}`);
-    return null;
-  }
-}
-
-/** Prix du jeu (6 h, sinon 24 h) à la place de poe.ninja quand l'objet a assez circulé. */
-function withExchange(file, exchange, reports) {
-  if (!exchange) return file;
-  const gameIds = matchItems(file.items, exchange.baseItems);
-  const windows = [exchange.hours.slice(-6).flat(), exchange.hours.flat()].map((m) => exchangePrices(m, file.league));
-  const { file: out, replaced } = applyExchange(file, gameIds, windows);
-  const report = compareReport(out.items);
-  reports[file.league] = { replaced, linked: gameIds.size, total: file.items.length, ...report };
-  console.log(
-    `[${file.league}] ${replaced}/${file.items.length} prix du Currency Exchange (médiane jeu/ninja : ${report.median?.toFixed(3) ?? "-"})`,
-  );
-  for (const r of report.worst.slice(0, 5)) console.log(`   ${r.name} : ${r.exchange.toPrecision(3)} div contre ${r.ninja.toPrecision(3)} (×${r.ratio.toFixed(2)})`);
-  return { ...out, priceSource: "exchange+ninja" };
-}
-
 async function main() {
   const outDir = process.argv[2] ?? "out";
   const forced = process.env.LEAGUES?.split(",").map((s) => s.trim()).filter(Boolean);
@@ -190,12 +153,10 @@ async function main() {
     ? forced.map((name) => ({ id: name, name }))
     : await getJson(`${BASE}/leagues`);
 
-  const exchange = await fetchExchange();
-  const reports = {};
   const index = [];
   const icons = new Set();
   for (const { id, name } of leagues) {
-    const file = withExchange(await fetchLeague(id), exchange, reports);
+    const file = await fetchLeague(id);
     for (const item of file.items) if (item.icon) icons.add(item.icon);
     if (file.items.length === 0) {
       console.warn(`[${id}] aucun prix, ligue ignorée`);
@@ -209,7 +170,6 @@ async function main() {
   }
   if (index.length === 0) throw new Error("Aucune ligue récupérée");
   await mirrorIcons(outDir, [...icons]);
-  await writeFile(join(outDir, "exchange-report.json"), JSON.stringify(reports, null, 2));
   await writeFile(join(outDir, "leagues.json"), JSON.stringify({ updatedAt: new Date().toISOString(), leagues: index }, null, 2));
 }
 
