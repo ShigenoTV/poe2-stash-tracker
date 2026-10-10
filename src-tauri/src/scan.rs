@@ -23,11 +23,14 @@ pub struct Region {
 
 impl Region {
     /// Grille du coffre ouvert. L'interface du jeu est ancrée à gauche et suit la hauteur de
-    /// l'écran : mesurée identique en 1920×1080 et 2560×1440 (x 18, y 123, 637×642 sur 1080).
+    /// l'écran : mesurée identique en 1920×1080 et 2560×1440 (x 18, y 123, 637 de large sur 1080).
+    /// Avec une rangée de dossiers (« Stash », « Stockage »…), le coffre descend d'environ 37 :
+    /// la zone va jusqu'en bas du coffre dans ce cas aussi (y 798), sinon la dernière rangée
+    /// de cases est coupée.
     pub fn stash(width: u32, height: u32) -> Region {
         let unit = f64::from(height) / 1080.0;
         let (w, h) = (f64::from(width.max(1)), f64::from(height.max(1)));
-        Region { x: 18.0 * unit / w, y: 123.0 * unit / h, w: 637.0 * unit / w, h: 642.0 * unit / h }
+        Region { x: 18.0 * unit / w, y: 123.0 * unit / h, w: 637.0 * unit / w, h: 675.0 * unit / h }
     }
 }
 
@@ -89,8 +92,12 @@ fn crop_captured(rgba: &RgbaImage, region: Option<Region>) -> Result<RgbImage, S
 }
 
 pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
-    let slots = vision::find_filled_slots(img);
+    let mut slots = vision::find_filled_slots(img);
     let side = vision::slot_side(&slots);
+    if let Some(side) = side {
+        slots.extend(vision::hidden_slots(img, &slots, side));
+        slots.sort_by_key(|r| (r.y / (side / 2).max(1), r.x));
+    }
     let scanned = slots
         .iter()
         .map(|s: &Rect| {
@@ -267,6 +274,23 @@ mod tests {
         let img = fixture("fullscreen-2560x1440.png");
         let scan = scan_image(&crop_region(&img, Region::stash(img.width(), img.height())).unwrap()).unwrap();
         assert_eq!(scan.slots.iter().filter(|s| s.quantity.is_some()).count(), 35);
+    }
+
+    /// Coffres spéciaux de Max en 2560×1440, rangée de dossiers affichée : reflets d'icônes
+    /// collés aux chiffres (Essence, Socketable), case cachée par son icône (Essence, 1re rangée),
+    /// dernière rangée en bas du coffre, quantité en milliers (« 44.9K », Expedition).
+    #[test]
+    fn reads_special_tabs() {
+        let cases = [
+            ("stash-essence-1440.png", "- - - 1 10 1 8 4 2 7 6 1 29 6 2 1 19 2 12 4 1 8 1 16 1 2 1 17 5 1 2 4 2 13 4 1 10 1 20 3 5 5 13 5 7 7 2 12 3 4 2 4 2 1 4"),
+            ("stash-socketable-1440.png", "5 2 28 4 32 5 6 30 3 3 21 3 3 12 3 4 10 2 2 1 1 4 1 3 3 2 6 2 1 7 1 3 3 2 1 6 1 2 1 - 1 1 - - 3 - - 1 - 1 2 - - 1 2 1 1 1"),
+            ("stash-expedition-1440.png", "23 2 3 1 2 44900 40 10 9 12 3 4 1 2 4 1"),
+        ];
+        for (name, want) in cases {
+            let scan = scan_image(&fixture(name)).unwrap();
+            let read: Vec<String> = scan.slots.iter().map(|s| s.quantity.map_or("-".into(), |q| q.to_string())).collect();
+            assert_eq!(read.join(" "), want, "{name}");
+        }
     }
 
     #[test]

@@ -11,6 +11,9 @@ fn main() {
     let slots = vision::find_filled_slots(&img);
     let side = vision::slot_side(&slots).expect("aucune case");
     println!("{} cases de {side} px", slots.len());
+    for h in vision::hidden_slots(&img, &slots, side) {
+        println!("cachée {},{} {:?}", h.x, h.y, vision::read_quantity(&img, &h, side));
+    }
     for s in &slots {
         let glyphs = |diagonal| -> String {
             vision::quantity_glyphs(&img, s, side, diagonal).iter().map(|g| vision::classify(g).unwrap_or('?')).collect()

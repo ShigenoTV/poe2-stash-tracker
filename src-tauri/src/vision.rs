@@ -194,11 +194,20 @@ pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -
     let Some(first) = parts.iter().position(|r| r.x < slot.x + side / 4) else {
         return Vec::new();
     };
+    // Les chiffres d'une quantité reposent sur la même ligne, ne se chevauchent pas et restent
+    // étroits : un reflet de l'icône collé derrière (cristal d'essence, rune) descend plus bas
+    // ou moins bas, empiète sur le chiffre précédent ou est trop large. Le haut varie davantage
+    // (le 8 dépasse le 2 de deux pixels) et, en 1080p, un trait d'un pixel peut manquer.
+    let bottom = |r: &Rect| r.y + r.h;
+    let max_w = side * 18 / 100;
     let mut line = vec![parts[first]];
     for r in &parts[first + 1..] {
         let last = line.last().unwrap();
-        let aligned = r.y.abs_diff(line[0].y) <= side / 12 && r.h.abs_diff(line[0].h) <= side / 12;
-        if aligned && r.x <= last.x + last.w + side / 10 {
+        let aligned = r.y.abs_diff(line[0].y) <= side / 12
+            && r.h.abs_diff(line[0].h) <= side / 12
+            && bottom(r).abs_diff(bottom(&line[0])) <= side / 16;
+        let after = r.x >= last.x + last.w;
+        if aligned && after && r.w <= max_w && r.x <= last.x + last.w + side / 10 {
             line.push(*r);
         }
     }
@@ -262,44 +271,84 @@ const STREAM_DIGIT_TEMPLATES: [(char, f32, &str); 10] = [
     ('9', 0.563, "246d88919aa451095bad48123fb6c83fad8809002476e488d16d00001236c8d1db7f00000012a4ffb6b624000012a4ff76e4a47f6d48ade42d767f7f6d48a4b6000000001264da64000000003fb6c82d5b5b3f6d9bc8640964769ab67f641200"), // 7 exemples
 ];
 
+/// Suffixe des grandes quantités : « 44.9K » pour 44 900.
+#[rustfmt::skip]
+const SUFFIX_TEMPLATES: [(char, f32, &str); 1] = [
+    ('K', 0.667, "ffff7f00003fbfffffff7f00007fffbfffff7f003fbfbf3fffff7f00bfbf3f00ffffbfbf3f000000ffffffff00000000ffffffff3f000000ffffbfbfbf3f0000ffff7f00ffbf3f00ffff7f00bfffbf3fffff7f003fbfffbfffff7f00007fffff"), // 1 exemple
+];
+
+/// Écart entre un glyphe et une forme de référence, en tenant compte de la largeur relative.
+fn shape_distance(glyph: &Glyph, ref_aspect: f32, cells: &str) -> f32 {
+    let aspect = glyph.rect.w as f32 / glyph.rect.h as f32;
+    let shape: f32 = cells
+        .as_bytes()
+        .chunks(2)
+        .zip(glyph.cells.iter())
+        .map(|(hex, v)| {
+            let t = u8::from_str_radix(std::str::from_utf8(hex).unwrap(), 16).unwrap();
+            (f32::from(t) - f32::from(*v)).abs() / 255.0
+        })
+        .sum::<f32>()
+        / (GLYPH_W * GLYPH_H) as f32;
+    shape + (aspect - ref_aspect).abs() * 0.5
+}
+
 /// Reconnaît un chiffre : forme la plus proche, en tenant compte de la largeur relative.
 pub fn classify(glyph: &Glyph) -> Option<char> {
-    let aspect = glyph.rect.w as f32 / glyph.rect.h as f32;
     DIGIT_TEMPLATES
         .iter()
         .chain(&STREAM_DIGIT_TEMPLATES)
-        .map(|(c, ref_aspect, cells)| {
-            let shape: f32 = cells
-                .as_bytes()
-                .chunks(2)
-                .zip(glyph.cells.iter())
-                .map(|(hex, v)| {
-                    let t = u8::from_str_radix(std::str::from_utf8(hex).unwrap(), 16).unwrap();
-                    (f32::from(t) - f32::from(*v)).abs() / 255.0
-                })
-                .sum::<f32>()
-                / (GLYPH_W * GLYPH_H) as f32;
-            (*c, shape + (aspect - ref_aspect).abs() * 0.5)
-        })
+        .map(|(c, ref_aspect, cells)| (*c, shape_distance(glyph, *ref_aspect, cells)))
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .filter(|(_, d)| *d < 0.35)
         .map(|(c, _)| c)
+}
+
+/// Reconnaît le suffixe « K » qui suit les chiffres d'une grande quantité.
+fn classify_suffix(glyph: &Glyph) -> Option<char> {
+    SUFFIX_TEMPLATES
+        .iter()
+        .map(|(c, ref_aspect, cells)| (*c, shape_distance(glyph, *ref_aspect, cells)))
+        .find(|(_, d)| *d < 0.25)
+        .map(|(c, _)| c)
+}
+
+/// Point décimal entre deux chiffres : quelques pixels d'encre en bas de l'espace qui les sépare.
+fn has_decimal_point(img: &RgbImage, a: &Rect, b: &Rect, side: u32) -> bool {
+    let bottom = a.y + a.h;
+    let ys = bottom.saturating_sub(side / 10)..(bottom + 1).min(img.height());
+    let ink = (a.x + a.w..b.x)
+        .flat_map(|x| ys.clone().map(move |y| (x, y)))
+        .filter(|&(x, y)| is_digit_ink(img.get_pixel(x, y), side))
+        .count();
+    ink >= 2
 }
 
 /// Quantité lue dans une case, ou `None` si aucun chiffre n'est reconnu.
 pub fn read_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
     // Chiffres reconnus jusqu'au premier glyphe inconnu (souvent un reflet de l'icône collé
     // derrière la quantité), et si la lecture est allée jusqu'au bout.
-    let read = |diagonal| -> (usize, bool, String) {
+    let read = |diagonal| -> (usize, bool, Option<u32>) {
         let glyphs = quantity_glyphs(img, slot, side, diagonal);
         let digits: String = glyphs.iter().map_while(classify).collect();
-        (digits.len(), digits.len() == glyphs.len(), digits)
+        let n = digits.len();
+        // « 44.9K » : le K suit les chiffres, le point se cache entre deux d'entre eux.
+        let thousands = n > 0 && glyphs.get(n).and_then(classify_suffix) == Some('K');
+        let value = if thousands {
+            let point = (1..n).find(|&i| has_decimal_point(img, &glyphs[i - 1].rect, &glyphs[i].rect, side));
+            let (int, frac) = digits.split_at(point.unwrap_or(n));
+            format!("{int}.{frac}0").parse::<f64>().ok().map(|v| (v * 1000.0).round() as u32)
+        } else {
+            digits.parse().ok()
+        };
+        let len = n + usize::from(thousands);
+        (len, len == glyphs.len(), value)
     };
     // En 4-voisinage, un trait diagonal fin (flux vidéo compressé, GeForce NOW) coupe le chiffre
     // en deux et il est perdu ; en 8-voisinage, un chiffre qui touche l'icône s'y colle. On garde
     // la lecture la plus longue des deux, complète de préférence.
-    let (_, _, digits) = [read(false), read(true)].into_iter().max_by_key(|(len, full, _)| (*len, *full))?;
-    digits.parse().ok()
+    let (_, _, value) = [read(false), read(true)].into_iter().max_by_key(|(len, full, _)| (*len, *full))?;
+    value
 }
 
 /// Palier de l'objet d'après la marque en bas à droite de la case : 2 pour « II » (Greater),
@@ -327,6 +376,42 @@ pub fn tier_mark(img: &RgbImage, slot: &Rect, side: u32) -> u8 {
         2 | 3 => bars,
         _ => 0,
     }
+}
+
+/// Cases que l'icône recouvre entièrement (essence au halo rouge vif) : leur fond bleu nuit ne
+/// se voit plus et elles échappent à `find_filled_slots`. Les cases d'un onglet sont alignées en
+/// rangées et en colonnes : on essaie chaque croisement d'une rangée et d'une colonne connues
+/// encore libre, et on garde ceux où une quantité se lit en haut à gauche.
+pub fn hidden_slots(img: &RgbImage, slots: &[Rect], side: u32) -> Vec<Rect> {
+    let lines = |pos: fn(&Rect) -> u32| {
+        let mut v: Vec<u32> = slots.iter().filter(|r| r.w.abs_diff(side) <= side / 8 && r.h.abs_diff(side) <= side / 8).map(pos).collect();
+        v.sort_unstable();
+        v.dedup_by(|b, a| b.abs_diff(*a) <= side / 8);
+        v
+    };
+    let (cols, rows) = (lines(|r| r.x), lines(|r| r.y));
+    // Les bandes bleues bien plus larges qu'une case (cadre de l'onglet sélectionné) ne sont pas
+    // des objets : elles ne masquent aucune case.
+    let big = side * 9 / 4;
+    let free = |c: &Rect| {
+        slots
+            .iter()
+            .filter(|r| r.w <= big && r.h <= big)
+            .all(|r| c.x + c.w <= r.x || r.x + r.w <= c.x || c.y + c.h <= r.y || r.y + r.h <= c.y)
+    };
+    let mut found: Vec<Rect> = Vec::new();
+    for &y in &rows {
+        for &x in &cols {
+            let c = Rect { x, y, w: side, h: side };
+            if x + side > img.width() || y + side > img.height() || !free(&c) || !found.iter().all(|f| f.x != x || f.y != y) {
+                continue;
+            }
+            if read_quantity(img, &c, side).is_some() {
+                found.push(c);
+            }
+        }
+    }
+    found
 }
 
 /// Taille de case courante (médiane des cases carrées).
