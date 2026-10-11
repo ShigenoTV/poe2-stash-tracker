@@ -243,6 +243,11 @@ button { font: inherit; color: inherit; }
 .session-gain .muted { font-weight: 400; font-size: 13px; }
 .session-reset { margin-left: 10px; font-size: 11px; font-weight: 400; padding: 2px 8px; }
 
+.chart.changes { padding: 8px 16px; margin-bottom: 14px; }
+.changes-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.changes-toggle { display: flex; align-items: baseline; gap: 6px; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
+.changes-caret { color: var(--muted); font-size: 12px; width: 10px; }
+.changes-summary { font-size: 13px; font-variant-numeric: tabular-nums; }
 .changes-list { list-style: none; margin: 6px 0 4px; padding: 0; }
 .changes-list li {
   display: grid; grid-template-columns: 32px minmax(0, 1fr) 90px 120px; align-items: center; gap: 12px;

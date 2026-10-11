@@ -15,6 +15,16 @@ type RefKey = (typeof REFERENCES)[number]["key"];
 
 /** Nombre de lignes montrées avant « Tout voir ». */
 const PREVIEW = 8;
+/** Détail déplié ou non, retenu d'une ouverture de l'appli à l'autre. */
+const OPEN_KEY = "changes-open";
+
+function loadOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface Props {
   snapshot: Snapshot;
@@ -36,6 +46,17 @@ function pointAt(history: HistoryPoint[], league: string, at: number): HistoryPo
 export function ChangesPanel({ snapshot, session, history, prices, currency, rates }: Props) {
   const [ref, setRef] = useState<RefKey>("session");
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState(loadOpen);
+  const toggle = () => {
+    setOpen((o) => {
+      try {
+        localStorage.setItem(OPEN_KEY, o ? "0" : "1");
+      } catch {
+        // Préférence non retenue : sans conséquence.
+      }
+      return !o;
+    });
+  };
 
   const reference = useMemo((): { holdings: Holdings; at: number } | null => {
     if (ref === "session") return session && { holdings: session.holdings, at: session.startedAt };
@@ -49,10 +70,37 @@ export function ChangesPanel({ snapshot, session, history, prices, currency, rat
   const signed = (exalted: number) => `${exalted > 0 ? "+" : exalted < 0 ? "−" : ""}${money(Math.abs(exalted))}`;
   const rows = result ? (all ? result.rows : result.rows.slice(0, PREVIEW)) : [];
 
+  const moved = result ? result.rows.length : 0;
+  const since = reference && new Date(reference.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+
   return (
     <section className="chart changes">
       <div className="chart-head">
-        <h2>Entrées et sorties</h2>
+        <div className="changes-title">
+          {moved > 0 ? (
+            <button type="button" className="changes-toggle" onClick={toggle} aria-expanded={open}>
+              <span className="changes-caret">{open ? "▾" : "▸"}</span>
+              <h2>Entrées et sorties</h2>
+            </button>
+          ) : (
+            <h2>Entrées et sorties</h2>
+          )}
+          <span className="changes-summary">
+            {!result ? (
+              <span className="muted">pas encore de snapshot assez ancien</span>
+            ) : (
+              <>
+                <span className="muted">depuis {since} :</span>{" "}
+                <strong className={result.totalExalted > 0 ? "delta-up" : result.totalExalted < 0 ? "delta-down" : ""}>
+                  {signed(result.totalExalted)}
+                </strong>{" "}
+                <span className="muted">
+                  {moved === 0 ? "· rien n'a bougé" : `· ${moved} objet${moved > 1 ? "s" : ""}`}
+                </span>
+              </>
+            )}
+          </span>
+        </div>
         <div className="chart-ranges" role="group" aria-label="Comparer avec">
           {REFERENCES.map((r) => (
             <button key={r.key} type="button" className={ref === r.key ? "active" : ""} onClick={() => setRef(r.key)}>
@@ -61,40 +109,27 @@ export function ChangesPanel({ snapshot, session, history, prices, currency, rat
           ))}
         </div>
       </div>
-      {!result ? (
-        <p className="chart-empty muted">Pas encore de snapshot assez ancien pour cette comparaison.</p>
-      ) : (
+      {open && result && moved > 0 && (
         <>
-          <p className="chart-summary">
-            Depuis {new Date(reference!.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} :{" "}
-            <strong className={result.totalExalted > 0 ? "delta-up" : result.totalExalted < 0 ? "delta-down" : ""}>
-              {signed(result.totalExalted)}
-            </strong>{" "}
-            <span className="muted">au prix actuel</span>
-          </p>
-          {rows.length === 0 ? (
-            <p className="chart-empty muted">Aucun objet n'a bougé.</p>
-          ) : (
-            <ul className="changes-list">
-              {rows.map((r) => {
-                const diff = r.after - r.before;
-                return (
-                  <li key={r.id}>
-                    <span className="item-row-icon">{r.icon && <img src={r.icon} alt="" />}</span>
-                    <span className="item-row-name">{r.name}</span>
-                    <span className={diff > 0 ? "delta-up" : "delta-down"}>
-                      {diff > 0 ? "+" : "−"}
-                      {Math.abs(diff).toLocaleString("fr-FR")}
-                    </span>
-                    <span className="item-row-total">{r.valueExalted === null ? <span className="muted">sans prix</span> : signed(r.valueExalted)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {result.rows.length > PREVIEW && (
+          <ul className="changes-list">
+            {rows.map((r) => {
+              const diff = r.after - r.before;
+              return (
+                <li key={r.id}>
+                  <span className="item-row-icon">{r.icon && <img src={r.icon} alt="" />}</span>
+                  <span className="item-row-name">{r.name}</span>
+                  <span className={diff > 0 ? "delta-up" : "delta-down"}>
+                    {diff > 0 ? "+" : "−"}
+                    {Math.abs(diff).toLocaleString("fr-FR")}
+                  </span>
+                  <span className="item-row-total">{r.valueExalted === null ? <span className="muted">sans prix</span> : signed(r.valueExalted)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {moved > PREVIEW && (
             <button type="button" className="ghost changes-more" onClick={() => setAll((a) => !a)}>
-              {all ? "Réduire" : `Tout voir (${result.rows.length})`}
+              {all ? "Réduire" : `Tout voir (${moved})`}
             </button>
           )}
         </>
