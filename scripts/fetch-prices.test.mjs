@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOverview, priceChanges, slugify } from "./fetch-prices.mjs";
+import { keepMissing, normalizeOverview, priceChanges, slugify } from "./fetch-prices.mjs";
 
 describe("normalizeOverview", () => {
   it("joint lignes et métadonnées de items et core.items", () => {
@@ -35,5 +35,25 @@ describe("priceChanges", () => {
 describe("slugify", () => {
   it("rend un nom de ligue utilisable en chemin", () => {
     expect(slugify("Rise of the Abyssal (HC)")).toBe("rise-of-the-abyssal-hc");
+  });
+});
+
+describe("keepMissing", () => {
+  const item = (id, value) => ({ id, name: id, category: "Essences", icon: null, value, volume: 1, change24h: 5, change7d: 9 });
+
+  it("garde au dernier prix connu un objet absent de ce passage", () => {
+    const previous = { fetchedAt: "2026-10-10T05:00:00Z", items: [item("perfect-essence-of-ruin", 0.003), item("chaos", 0.01)] };
+    const file = { fetchedAt: "2026-10-11T07:00:00Z", items: [item("chaos", 0.02)] };
+    expect(keepMissing(file, previous).items).toEqual([
+      { ...item("chaos", 0.02), seenAt: "2026-10-11T07:00:00Z" },
+      { ...item("perfect-essence-of-ruin", 0.003), seenAt: "2026-10-10T05:00:00Z", change24h: null },
+    ]);
+  });
+
+  it("oublie un objet absent depuis plus de deux semaines", () => {
+    const previous = { fetchedAt: "2026-10-11T00:00:00Z", items: [{ ...item("old", 1), seenAt: "2026-09-20T00:00:00Z" }] };
+    const file = { fetchedAt: "2026-10-11T07:00:00Z", items: [] };
+    expect(keepMissing(file, previous).items).toEqual([]);
+    expect(keepMissing(file, null).items).toEqual([]);
   });
 });

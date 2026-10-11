@@ -32,6 +32,8 @@ const EXCHANGE_TYPES = [
 ];
 
 const POE_CDN = "https://web.poecdn.com";
+/** Branche prices publiée, lue pour reprendre les objets absents d'un passage à l'autre. */
+const PUBLISHED = "https://raw.githubusercontent.com/ShigenoTV/poe2-stash-tracker/prices";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function getJson(url) {
@@ -118,6 +120,38 @@ async function fetchLeague(league) {
   return { league, fetchedAt: new Date().toISOString(), primary: primary ?? "divine", rates, items };
 }
 
+/** Durée pendant laquelle un objet absent de poe.ninja garde son dernier prix connu. */
+const KEEP_MISSING_MS = 14 * 24 * 3600e3;
+
+/**
+ * Reprend les objets du fichier précédent absents de la réponse de poe.ninja : un objet peu
+ * échangé disparaît parfois quelques heures de l'overview, et l'app ne saurait plus le
+ * reconnaître (elle le confondait avec l'icône la plus proche). Chaque objet garde `seenAt`,
+ * la dernière fois que poe.ninja l'a listé ; au-delà de KEEP_MISSING_MS il est oublié.
+ */
+export function keepMissing(file, previous) {
+  const now = Date.parse(file.fetchedAt);
+  const items = file.items.map((item) => ({ ...item, seenAt: file.fetchedAt }));
+  const ids = new Set(items.map((item) => item.id));
+  for (const old of previous?.items ?? []) {
+    const seenAt = old.seenAt ?? previous.fetchedAt;
+    if (ids.has(old.id) || !(now - Date.parse(seenAt) <= KEEP_MISSING_MS)) continue;
+    items.push({ ...old, seenAt, change24h: null });
+    ids.add(old.id);
+  }
+  return { ...file, items };
+}
+
+/** Fichier publié au passage précédent, ou `null` (première publication, réseau…). */
+async function previousFile(slug) {
+  try {
+    const res = await fetch(`${PUBLISHED}/${slug}/latest.json`, { headers: { "User-Agent": USER_AGENT } });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Nom de fichier stable d'une icône : `<hash>-<nom>.png`, tiré de son URL poecdn. */
 export function iconFile(url) {
   const parts = new URL(url).pathname.split("/").filter(Boolean);
@@ -156,13 +190,16 @@ async function main() {
   const index = [];
   const icons = new Set();
   for (const { id, name } of leagues) {
-    const file = await fetchLeague(id);
-    for (const item of file.items) if (item.icon) icons.add(item.icon);
-    if (file.items.length === 0) {
+    const fetched = await fetchLeague(id);
+    if (fetched.items.length === 0) {
       console.warn(`[${id}] aucun prix, ligue ignorée`);
       continue;
     }
     const slug = slugify(id);
+    const file = keepMissing(fetched, await previousFile(slug));
+    for (const item of file.items) if (item.icon) icons.add(item.icon);
+    const kept = file.items.length - fetched.items.length;
+    if (kept > 0) console.log(`[${id}] ${kept} objets absents gardés au dernier prix connu`);
     await mkdir(join(outDir, slug), { recursive: true });
     await writeFile(join(outDir, slug, "latest.json"), JSON.stringify(file));
     index.push({ id, name: name ?? id, slug, fetchedAt: file.fetchedAt, count: file.items.length });
