@@ -1,0 +1,48 @@
+{
+ "forbidden-rites": [
+  {
+   "id": "essence-of-the-infinite",
+   "name": "Essence of the Infinite",
+   "category": "Essences",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvRXNzZW5jZS9BdHRyaWJ1dGVFc3NlbmNlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/58f9516082/AttributeEssence.png",
+   "value": 0.3333,
+   "volume": 0.1667,
+   "change24h": null,
+   "change7d": 0,
+   "seenAt": "2026-10-10T05:50:02.366Z"
+  },
+  {
+   "id": "greater-essence-of-battle",
+   "name": "Greater Essence of Battle",
+   "category": "Essences",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvRXNzZW5jZS9HcmVhdGVyQXR0YWNrRXNzZW5jZSIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/e2bb5332b8/GreaterAttackEssence.png",
+   "value": 0.001333,
+   "volume": 0.001111,
+   "change24h": null,
+   "change7d": 54.7,
+   "seenAt": "2026-10-10T05:50:02.366Z"
+  },
+  {
+   "id": "rune-of-confrontation",
+   "name": "Rune of Confrontation",
+   "category": "Runes",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvRXhwZWRpdGlvbjIvRWFybHlNeXRoaWNSdW5lMTMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/159530efbe/EarlyMythicRune13.png",
+   "value": 0.001333,
+   "volume": 0.0002222,
+   "change24h": null,
+   "change7d": 0,
+   "seenAt": "2026-10-10T05:50:02.366Z"
+  },
+  {
+   "id": "warding-rune-of-desperation",
+   "name": "Warding Rune of Desperation",
+   "category": "Runes",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvRXhwZWRpdGlvbjIvUnVuaWNXYXJkNCIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/2662ce564a/RunicWard4.png",
+   "value": 0.009332,
+   "volume": 0.001555,
+   "change24h": null,
+   "change7d": 600,
+   "seenAt": "2026-10-10T05:50:02.366Z"
+  }
+ ]
+}

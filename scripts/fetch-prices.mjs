@@ -6,7 +6,7 @@
 // Usage : node scripts/fetch-prices.mjs [dossier_sortie]   (défaut : out)
 // Variable optionnelle LEAGUES="Ligue A,Standard" pour forcer les ligues.
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const BASE = "https://poe.ninja/poe2/api/economy";
@@ -142,6 +142,55 @@ export function keepMissing(file, previous) {
   return { ...file, items };
 }
 
+/**
+ * Derniers prix connus relevés à la main (objets absents de poe.ninja au moment où la reprise
+ * automatique a été mise en place), par ligue ; ils expirent comme les autres (KEEP_MISSING_MS).
+ */
+async function knownPrices(slug) {
+  try {
+    const all = JSON.parse(await readFile(new URL("./known-prices.json", import.meta.url), "utf8"));
+    return all[slug] ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Icônes des objets que poe.ninja liste sans image (idoles, certains fragments) : prises dans
+ * les données statiques du site d'échange (poecdn), sinon sur le wiki PoE2.
+ */
+async function fillMissingIcons(items) {
+  const missing = items.filter((item) => !item.icon);
+  if (missing.length === 0) return;
+  const byName = new Map();
+  try {
+    const data = await getJson("https://www.pathofexile.com/api/trade2/data/static");
+    for (const group of data.result ?? []) {
+      for (const entry of group.entries ?? []) {
+        if (entry.text && entry.image) byName.set(entry.text, iconUrl(entry.image));
+      }
+    }
+  } catch (err) {
+    console.warn(`Données statiques du site d'échange ignorées : ${err.message}`);
+  }
+  for (const item of missing) {
+    item.icon = byName.get(item.name) ?? (await wikiIcon(item.name));
+    console.log(`Icône de ${item.name} : ${item.icon ?? "introuvable"}`);
+  }
+}
+
+async function wikiIcon(name) {
+  const title = `File:${name.replaceAll(" ", "_")}_inventory_icon.png`;
+  const url = `https://www.poe2wiki.net/api.php?action=query&prop=imageinfo&iiprop=url&format=json&titles=${encodeURIComponent(title)}`;
+  try {
+    const data = await getJson(url);
+    const page = Object.values(data.query?.pages ?? {})[0];
+    return page?.imageinfo?.[0]?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Fichier publié au passage précédent, ou `null` (première publication, réseau…). */
 async function previousFile(slug) {
   try {
@@ -196,7 +245,12 @@ async function main() {
       continue;
     }
     const slug = slugify(id);
-    const file = keepMissing(fetched, await previousFile(slug));
+    const previous = await previousFile(slug);
+    const file = keepMissing(fetched, {
+      fetchedAt: previous?.fetchedAt,
+      items: [...(previous?.items ?? []), ...(await knownPrices(slug))],
+    });
+    await fillMissingIcons(file.items);
     for (const item of file.items) if (item.icon) icons.add(item.icon);
     const kept = file.items.length - fetched.items.length;
     if (kept > 0) console.log(`[${id}] ${kept} objets absents gardés au dernier prix connu`);
