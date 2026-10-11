@@ -1,0 +1,47 @@
+{
+  "updatedAt": "2026-10-11T01:03:31.715Z",
+  "leagues": [
+    {
+      "id": "Forbidden Rites",
+      "name": "Forbidden Rites",
+      "slug": "forbidden-rites",
+      "fetchedAt": "2026-10-11T01:00:29.048Z",
+      "count": 653
+    },
+    {
+      "id": "Runes of Aldur",
+      "name": "Runes of Aldur",
+      "slug": "runes-of-aldur",
+      "fetchedAt": "2026-10-11T01:00:53.523Z",
+      "count": 487
+    },
+    {
+      "id": "HC Forbidden Rites",
+      "name": "HC Forbidden Rites",
+      "slug": "hc-forbidden-rites",
+      "fetchedAt": "2026-10-11T01:01:16.371Z",
+      "count": 350
+    },
+    {
+      "id": "HC Runes of Aldur",
+      "name": "HC Runes of Aldur",
+      "slug": "hc-runes-of-aldur",
+      "fetchedAt": "2026-10-11T01:01:37.862Z",
+      "count": 19
+    },
+    {
+      "id": "Standard",
+      "name": "Standard",
+      "slug": "standard",
+      "fetchedAt": "2026-10-11T01:02:03.180Z",
+      "count": 374
+    },
+    {
+      "id": "Hardcore",
+      "name": "Hardcore",
+      "slug": "hardcore",
+      "fetchedAt": "2026-10-11T01:02:27.821Z",
+      "count": 2
+    }
+  ]
+}
