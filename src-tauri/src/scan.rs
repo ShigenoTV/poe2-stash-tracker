@@ -119,6 +119,69 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
     Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None, stash_type: None })
 }
 
+/// Captures supplémentaires prises après l'image stable : chaque case doit être vue sur la
+/// majorité des captures, et sa quantité, son palier et son icône sont votés ou moyennés.
+/// Un reflet, une particule ou le curseur qui passe ne fausse ainsi qu'une seule lecture.
+const EXTRA_FRAMES: usize = 2;
+const FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_millis(120);
+
+/// Valeur la plus fréquente ; à égalité, la première vue.
+fn most_common<T: PartialEq + Copy>(values: &[T]) -> T {
+    let count = |v: &T| values.iter().filter(|w| *w == v).count();
+    let mut best = values[0];
+    for v in values {
+        if count(v) > count(&best) {
+            best = *v;
+        }
+    }
+    best
+}
+
+/// Fusionne les lectures d'un même onglet sur plusieurs captures (la première sert de base).
+fn merge_frames(mut frames: Vec<ScanResult>) -> ScanResult {
+    let n = frames.len();
+    let mut base = frames.remove(0);
+    let Some(side) = base.slot_side else { return base };
+    let near = (side / 4).max(1);
+    // Cases de chaque capture regroupées par position.
+    let mut groups: Vec<Vec<ScannedSlot>> = Vec::new();
+    for slot in std::mem::take(&mut base.slots).into_iter().chain(frames.into_iter().flat_map(|f| f.slots)) {
+        let same = groups.iter_mut().find(|g| g[0].x.abs_diff(slot.x) <= near && g[0].y.abs_diff(slot.y) <= near);
+        match same {
+            Some(g) => g.push(slot),
+            None => groups.push(vec![slot]),
+        }
+    }
+    base.slots = groups
+        .into_iter()
+        .filter(|g| g.len() * 2 > n)
+        .map(|g| {
+            let quantity = most_common(&g.iter().map(|s| s.quantity).collect::<Vec<_>>());
+            let tier = most_common(&g.iter().map(|s| s.tier).collect::<Vec<_>>());
+            let descriptors: Vec<Vec<u8>> = g
+                .iter()
+                .filter_map(|s| base64::engine::general_purpose::STANDARD.decode(&s.descriptor).ok())
+                .collect();
+            let mut slot = g.into_iter().next().expect("groupe non vide");
+            if let Some(first) = descriptors.first() {
+                let same_len: Vec<&Vec<u8>> = descriptors.iter().filter(|d| d.len() == first.len()).collect();
+                let mean: Vec<u8> = (0..first.len())
+                    .map(|i| {
+                        let sum: u32 = same_len.iter().map(|d| u32::from(d[i])).sum();
+                        (sum as f32 / same_len.len() as f32).round() as u8
+                    })
+                    .collect();
+                slot.descriptor = base64::engine::general_purpose::STANDARD.encode(mean);
+            }
+            slot.quantity = quantity;
+            slot.tier = tier;
+            slot
+        })
+        .collect();
+    base.slots.sort_by_key(|r| (r.y / (side / 2).max(1), r.x));
+    base
+}
+
 /// Rectangle en pixels d'une zone exprimée en fractions de l'image.
 fn region_rect(width: u32, height: u32, region: Region) -> Result<(u32, u32, u32, u32), String> {
     let clamp = |v: f64| v.clamp(0.0, 1.0);
@@ -231,13 +294,32 @@ pub async fn auto_scan(
             return Ok(AutoScanResult::Changing);
         }
         state.pending = None;
-        state.scanned = Some(thumb);
+        state.scanned = Some(thumb.clone());
     }
 
-    let mut scan = scan_image(&stash)?;
-    if !looks_like_stash(&scan) {
+    let first = scan_image(&stash)?;
+    if !looks_like_stash(&first) {
         return Ok(AutoScanResult::NoStash);
     }
+    let mut frames = vec![first];
+    for _ in 0..EXTRA_FRAMES {
+        let thumb = thumb.clone();
+        let extra = tauri::async_runtime::spawn_blocking(move || -> Result<Option<ScanResult>, String> {
+            std::thread::sleep(FRAME_INTERVAL);
+            let c = capture::capture_game_window()?;
+            let screen = RgbaImage::from_raw(c.width, c.height, c.rgba).ok_or("Capture : taille d'image incohérente")?;
+            let img = crop_captured(&screen, region)?;
+            // L'onglet a changé entre-temps : cette capture ne compte pas.
+            if thumb_diff(&thumbnail(&img), &thumb) >= CHANGE_THRESHOLD {
+                return Ok(None);
+            }
+            scan_image(&img).map(Some)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        frames.extend(extra);
+    }
+    let mut scan = merge_frames(frames);
     identify_all(&app, &library, &mut scan).await?;
     (scan.stash_type, scan.tab_name) = tauri::async_runtime::spawn_blocking(move || {
         (stashtype::detect(&screen).map(String::from), tabname::read(&screen))
@@ -355,5 +437,38 @@ mod tests {
         let t = thumbnail(&img);
         assert!(thumb_diff(&t, &thumbnail(&noisy)) < CHANGE_THRESHOLD);
         assert!(thumb_diff(&t, &thumbnail(&other)) > CHANGE_THRESHOLD);
+    }
+
+    fn slot(x: u32, quantity: Option<u32>, descriptor: &[u8]) -> ScannedSlot {
+        ScannedSlot {
+            x,
+            y: 10,
+            w: 60,
+            h: 60,
+            quantity,
+            tier: 0,
+            icon_png_base64: None,
+            icon: RgbImage::new(1, 1),
+            descriptor: base64::engine::general_purpose::STANDARD.encode(descriptor),
+            identification: None,
+        }
+    }
+
+    fn frame(slots: Vec<ScannedSlot>) -> ScanResult {
+        ScanResult { slot_side: Some(60), slots, identify_error: None, tab_name: None, stash_type: None }
+    }
+
+    #[test]
+    fn frames_vote_on_each_slot() {
+        let merged = merge_frames(vec![
+            // Un reflet lu comme un chiffre de trop sur la première capture ; une case fantôme.
+            frame(vec![slot(10, Some(17), &[10, 20]), slot(80, Some(3), &[0, 0]), slot(150, Some(1), &[5, 5])]),
+            frame(vec![slot(11, Some(7), &[20, 20]), slot(81, Some(3), &[0, 0])]),
+            // La case du milieu manque (curseur dessus), une autre légèrement décalée.
+            frame(vec![slot(9, Some(7), &[30, 20])]),
+        ]);
+        let got: Vec<(u32, Option<u32>)> = merged.slots.iter().map(|s| (s.x, s.quantity)).collect();
+        assert_eq!(got, [(10, Some(7)), (80, Some(3))]);
+        assert_eq!(merged.slots[0].descriptor, base64::engine::general_purpose::STANDARD.encode([20u8, 20]));
     }
 }

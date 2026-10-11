@@ -16,6 +16,15 @@ pub const GRID: usize = 16;
 const W_SHAPE: f32 = 0.3;
 const W_MEAN: f32 = 0.2;
 const W_RAW: f32 = 0.5;
+/// Teintes vives (lueurs, particules), comptées sur l'image entière et non sur la grille : un
+/// Omen jaune et le même en violet ne diffèrent que par quelques points lumineux, que la grille
+/// de 16×16 dilue dans le bois sombre de l'icône. Une dernière case compte les pixels clairs
+/// mais gris : une essence grise ne ressemble pas à une rouge.
+pub const HUE_BINS: usize = 13;
+const GRAY_BIN: usize = HUE_BINS - 1;
+/// Réglé sur les coffres Ritual, Essence et Socketable de Max : plus fort, les runes (même
+/// teinte, formes proches) se confondent ; plus faible, les Omens de même forme aussi.
+const W_HUE: f32 = 0.025;
 /// Fond d'une case occupée, utilisé pour poser les icônes transparentes de poe.ninja.
 const SLOT_BACKGROUND: Rgb<u8> = Rgb([4, 4, 30]);
 
@@ -32,7 +41,60 @@ fn is_tier_zone(cx: usize, cy: usize) -> bool {
 
 fn describe(img: &RgbImage) -> Descriptor {
     let small = imageops::resize(img, GRID as u32, GRID as u32, imageops::FilterType::Triangle);
-    Descriptor(small.into_raw())
+    let mut bytes = small.into_raw();
+    bytes.extend(hue_histogram(img));
+    Descriptor(bytes)
+}
+
+/// Répartition des pixels clairs par teinte (somme 255), hors zones des chiffres et du palier ;
+/// tout à zéro si l'icône est presque entièrement sombre.
+fn hue_histogram(img: &RgbImage) -> [u8; HUE_BINS] {
+    let (w, h) = (img.width().max(1) as usize, img.height().max(1) as usize);
+    let mut bins = [0f32; HUE_BINS];
+    for (x, y, p) in img.enumerate_pixels() {
+        let (cx, cy) = (x as usize * GRID / w, y as usize * GRID / h);
+        if is_digit_zone(cx, cy) || is_tier_zone(cx, cy) {
+            continue;
+        }
+        let [r, g, b] = p.0.map(|c| f32::from(c) / 255.0);
+        let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+        let sat = if max > 0.0 { (max - min) / max } else { 0.0 };
+        if max < 0.35 {
+            continue;
+        }
+        if sat < 0.35 {
+            bins[GRAY_BIN] += max;
+            continue;
+        }
+        let d = max - min;
+        let hue = if max == r {
+            ((g - b) / d).rem_euclid(6.0)
+        } else if max == g {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        } / 6.0;
+        bins[((hue * GRAY_BIN as f32) as usize).min(GRAY_BIN - 1)] += sat * max;
+    }
+    let total: f32 = bins.iter().sum();
+    // Moins de l'équivalent d'un carré de 4×4 pixels clairs : pas de teinte significative.
+    if total < 16.0 {
+        return [0; HUE_BINS];
+    }
+    bins.map(|v| (v / total * 255.0).round() as u8)
+}
+
+/// Écart entre deux répartitions de teintes (0..1), nul si l'une manque (ancienne correction
+/// mémorisée sans teintes) ou si l'une des icônes est presque entièrement sombre.
+fn hue_distance(a: &Descriptor, b: &Descriptor) -> f32 {
+    let start = GRID * GRID * 3;
+    let (Some(ha), Some(hb)) = (a.0.get(start..start + HUE_BINS), b.0.get(start..start + HUE_BINS)) else {
+        return 0.0;
+    };
+    if ha.iter().all(|&v| v == 0) || hb.iter().all(|&v| v == 0) {
+        return 0.0;
+    }
+    ha.iter().zip(hb).map(|(&x, &y)| f32::from(x.abs_diff(y))).sum::<f32>() / (2.0 * 255.0)
 }
 
 /// Descripteur d'une case capturée en jeu (bordure de la case retirée).
@@ -77,7 +139,7 @@ pub fn distance(a: &Descriptor, b: &Descriptor, ignore_tier: bool) -> f32 {
             total += W_SHAPE * (va - vb).abs() + W_MEAN * (ma[ch] - mb[ch]).abs() + W_RAW * raw.abs();
         }
     }
-    total / (cells.len() * 3) as f32 / 255.0
+    total / (cells.len() * 3) as f32 / 255.0 + W_HUE * hue_distance(a, b)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -163,5 +225,25 @@ mod tests {
         let icon = RgbaImage::from_pixel(8, 8, image::Rgba([255, 255, 255, 0]));
         let d = describe_reference(&icon);
         assert_eq!(&d.0[..3], &SLOT_BACKGROUND.0);
+    }
+
+    /// Cases des coffres de Max confondues avant la prise en compte des teintes : même forme,
+    /// couleur différente (Omen violet lu comme un jaune, essence violette lue comme un Omen).
+    #[test]
+    fn colour_tells_same_shape_icons_apart() {
+        let cases = [
+            ("stash-ritual-1440.png", (566, 340), "omen-whittling", "omen-greater-exaltation"),
+            ("stash-ritual-1440.png", (566, 790), "omen-secret-compartments", "omen-reinforcements"),
+            ("stash-essence-1440.png", (260, 809), "perfect-essence-ruin", "omen-sinistral-annulment"),
+        ];
+        let fixtures = format!("{}/tests/fixtures", env!("CARGO_MANIFEST_DIR"));
+        let icon = |name: &str| describe_reference(&image::open(format!("{fixtures}/icons/{name}.png")).unwrap().to_rgba8());
+        for (tab, (x, y), right, wrong) in cases {
+            let scan = crate::scan::scan_image(&image::open(format!("{fixtures}/{tab}")).unwrap().to_rgb8()).unwrap();
+            let slot = scan.slots.iter().find(|s| s.x.abs_diff(x) <= 4 && s.y.abs_diff(y) <= 4).expect("case trouvée");
+            let d = Descriptor(base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &slot.descriptor).unwrap());
+            let (dr, dw) = (distance(&d, &icon(right), true), distance(&d, &icon(wrong), true));
+            assert!(dr < dw, "{tab} ({x},{y}) : {right} {dr:.3} / {wrong} {dw:.3}");
+        }
     }
 }
