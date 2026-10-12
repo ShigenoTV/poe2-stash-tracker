@@ -107,7 +107,7 @@ pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
                 y: s.y,
                 w: s.w,
                 h: s.h,
-                quantity: side.and_then(|side| vision::read_quantity(img, s, side)),
+                quantity: side.and_then(|side| vision::slot_quantity(img, s, side)),
                 tier: side.map_or(0, |side| vision::tier_mark(img, s, side)),
                 descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&icon).0),
                 icon_png_base64: None,
@@ -364,9 +364,12 @@ mod tests {
     #[test]
     fn reads_special_tabs() {
         let cases = [
-            ("stash-essence-1440.png", "- - - 1 10 1 8 4 2 7 6 1 29 6 2 1 19 2 12 4 1 8 1 16 1 2 1 17 5 1 2 4 2 13 4 1 10 1 20 3 5 5 13 5 7 7 2 12 3 4 2 4 2 1 4"),
+            ("stash-essence-1440.png", "- - 1 10 1 8 4 2 7 6 1 29 6 2 1 19 2 12 4 1 8 1 16 1 2 1 17 5 1 2 4 2 13 4 1 10 1 20 3 5 5 13 5 7 7 2 12 3 4 2 4 2 1 4"),
             ("stash-socketable-1440.png", "5 2 28 4 32 5 6 30 3 3 21 3 3 12 3 4 10 2 2 1 1 4 1 3 3 2 6 2 1 7 1 3 3 2 1 6 1 2 1 - 1 1 - - 3 - - 1 - 1 2 - - 1 2 1 1 1"),
             ("stash-expedition-1440.png", "23 2 3 1 2 44900 40 10 9 12 3 4 1 2 4 1"),
+            // Sous-pages en grille : cases collées en colonne, nombre en bas (Wombgifts) ou absent.
+            ("stash-wombgifts-1440.png", "79 80 79 79 80 79 79 79"),
+            ("stash-ultimatums-1440.png", "1 1 1 1 1 1 1 1 1 1 1 1 1"),
         ];
         for (name, want) in cases {
             let scan = scan_image(&fixture(name)).unwrap();

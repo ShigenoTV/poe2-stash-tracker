@@ -18,6 +18,6 @@ fn main() {
         let glyphs = |diagonal| -> String {
             vision::quantity_glyphs(&img, s, side, diagonal).iter().map(|g| vision::classify(g).unwrap_or('?')).collect()
         };
-        println!("{:>5},{:>5}  {:?} palier {}  (4-voisinage « {} », 8-voisinage « {} »)", s.x, s.y, vision::read_quantity(&img, s, side), vision::tier_mark(&img, s, side), glyphs(false), glyphs(true));
+        println!("{:>5},{:>5} {}x{} {:?} palier {}  (4-voisinage « {} », 8-voisinage « {} »)", s.x, s.y, s.w, s.h, vision::slot_quantity(&img, s, side), vision::tier_mark(&img, s, side), glyphs(false), glyphs(true));
     }
 }

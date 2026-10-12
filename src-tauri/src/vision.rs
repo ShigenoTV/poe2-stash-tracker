@@ -72,7 +72,15 @@ pub fn find_filled_slots(img: &RgbImage) -> Vec<Rect> {
     let mut parts: Vec<Rect> = components(&mask, img.width(), img.height(), false)
         .into_iter()
         .filter(|(_, count)| *count >= 15)
-        .map(|(r, _)| r)
+        // Un bloc de cases est plein de fond bleu ; un cadre bleu autour du coffre (GeForce NOW)
+        // est creux et ne se recoupe pas.
+        .flat_map(|(r, count)| {
+            if count * 8 >= r.w * r.h {
+                split_on_lines(&mask, img.width(), img.height() / 22, r)
+            } else {
+                vec![r]
+            }
+        })
         // Un cadre bleu autour du coffre (onglet sélectionné, GeForce NOW) n'est pas une case.
         .filter(|r| r.w < img.width() / 2 && r.h < img.height() / 2)
         .collect();
@@ -133,6 +141,67 @@ pub fn find_filled_slots(img: &RgbImage) -> Vec<Rect> {
     slots
 }
 
+/// Dans les sous-pages en grille (Wombgifts, Trials…), les cases remplies voisines ne sont
+/// séparées que par un filet d'un ou deux pixels que le fond bleu traverse par endroits : une
+/// colonne de cases forme un seul bloc. On le recoupe sur ces filets, des rangées (ou colonnes)
+/// presque sans fond bleu, courtes et bordées de part et d'autre par une case entière. Une
+/// icône qui barre la case laisse une bande sans bleu plus large, ou trop près du bord de la
+/// case pour laisser deux morceaux de `min_piece` : elle ne coupe pas. La zone du coffre fait
+/// environ 14 cases de haut, d'où `min_piece` des deux tiers d'une case.
+fn split_on_lines(mask: &[bool], width: u32, min_piece: u32, r: Rect) -> Vec<Rect> {
+    let at = |x: u32, y: u32| mask[(y * width + x) as usize];
+    let cuts = |len: u32, across: u32, covered: &dyn Fn(u32) -> u32| -> Vec<(u32, u32)> {
+        let low: Vec<bool> = (0..len).map(|i| covered(i) * 5 <= across).collect();
+        let mut pieces = Vec::new();
+        let mut start = 0;
+        let mut i = 0;
+        while i < len {
+            if !low[i as usize] {
+                i += 1;
+                continue;
+            }
+            let run_start = i;
+            while i < len && low[i as usize] {
+                i += 1;
+            }
+            if i - run_start <= 3 && run_start >= start + min_piece && i + min_piece <= len {
+                pieces.push((start, run_start));
+                start = i;
+            }
+        }
+        pieces.push((start, len));
+        pieces
+    };
+    if r.w.max(r.h) < 2 * min_piece {
+        return vec![r];
+    }
+    let rows = cuts(r.h, r.w, &|y| (r.x..r.x + r.w).filter(|&x| at(x, r.y + y)).count() as u32);
+    let mut out = Vec::new();
+    for (y0, y1) in rows {
+        let band = Rect { x: r.x, y: r.y + y0, w: r.w, h: y1 - y0 };
+        let cols = cuts(band.w, band.h, &|x| (band.y..band.y + band.h).filter(|&y| at(band.x + x, y)).count() as u32);
+        out.extend(cols.into_iter().map(|(x0, x1)| Rect { x: band.x + x0, y: band.y, w: x1 - x0, h: band.h }));
+    }
+    if out.len() == 1 {
+        return out;
+    }
+    // Un morceau garde toute la largeur (ou hauteur) du bloc : on le resserre sur son fond bleu,
+    // sinon une case seule sous une rangée de deux paraît large de deux cases.
+    out.into_iter()
+        .filter_map(|p| {
+            let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0, 0);
+            for y in p.y..p.y + p.h {
+                for x in p.x..p.x + p.w {
+                    if at(x, y) {
+                        (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+                    }
+                }
+            }
+            (x0 <= x1).then(|| Rect { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 })
+        })
+        .collect()
+}
+
 fn union(a: &Rect, b: &Rect) -> Rect {
     let x = a.x.min(b.x);
     let y = a.y.min(b.y);
@@ -170,12 +239,16 @@ fn ink_min(side: u32) -> u8 {
     }
 }
 
-/// Isole les chiffres de la quantité, en haut à gauche de la case.
-pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -> Vec<Glyph> {
+/// Taches d'encre blanche à taille de chiffre dans la bande du haut (ou du bas) de la case,
+/// de gauche à droite.
+fn digit_parts(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool, bottom: bool) -> Vec<Rect> {
     let x0 = slot.x + 1;
-    let y0 = slot.y + 1;
+    let y0 = if bottom { slot.y + slot.h.min(side) * 11 / 20 } else { slot.y + 1 };
+    if x0 >= img.width() || y0 >= img.height() {
+        return Vec::new();
+    }
     let w = (slot.w.min(side) * 4 / 5).min(img.width() - x0);
-    let h = (side * 2 / 5).min(img.height() - y0);
+    let h = if bottom { slot.h.min(side) * 9 / 20 - 1 } else { side * 2 / 5 }.min(img.height() - y0);
     let mask: Vec<bool> = (0..h)
         .flat_map(|y| (0..w).map(move |x| (x, y)))
         .map(|(x, y)| is_digit_ink(img.get_pixel(x0 + x, y0 + y), side))
@@ -189,6 +262,18 @@ pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -
         .map(|(r, _)| Rect { x: r.x + x0, y: r.y + y0, ..r })
         .collect();
     parts.sort_by_key(|r| r.x);
+    parts
+}
+
+/// Isole les chiffres de la quantité, en haut à gauche de la case.
+pub fn quantity_glyphs(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool) -> Vec<Glyph> {
+    quantity_glyphs_at(img, slot, side, diagonal, false)
+}
+
+/// Isole les chiffres de la quantité, en haut à gauche de la case ou, avec `bottom`, en bas à
+/// gauche (sous-pages en grille comme les Wombgifts, où le nombre passe sous l'icône).
+pub fn quantity_glyphs_at(img: &RgbImage, slot: &Rect, side: u32, diagonal: bool, bottom: bool) -> Vec<Glyph> {
+    let parts = digit_parts(img, slot, side, diagonal, bottom);
 
     // La quantité commence près du bord gauche, puis les chiffres se suivent sur une ligne.
     let Some(first) = parts.iter().position(|r| r.x < slot.x + side / 4) else {
@@ -324,12 +409,51 @@ fn has_decimal_point(img: &RgbImage, a: &Rect, b: &Rect, side: u32) -> bool {
     ink >= 2
 }
 
-/// Quantité lue dans une case, ou `None` si aucun chiffre n'est reconnu.
+/// Quantité lue dans une case, ou `None` si aucun chiffre n'est reconnu. Le nombre est en haut
+/// à gauche ; s'il n'y a rien qui ressemble à un chiffre là, on regarde en bas à gauche.
 pub fn read_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
+    if !has_glyphs(img, slot, side, false) && has_glyphs(img, slot, side, true) {
+        return read_quantity_at(img, slot, side, true);
+    }
+    read_quantity_at(img, slot, side, false)
+}
+
+fn has_glyphs(img: &RgbImage, slot: &Rect, side: u32, bottom: bool) -> bool {
+    [false, true].into_iter().any(|diagonal| !quantity_glyphs_at(img, slot, side, diagonal, bottom).is_empty())
+}
+
+/// Quantité d'une case trouvée : le nombre lu ou, pour un objet qui n'affiche aucun nombre
+/// (Ultimatum, tablette, objet seul qui ne s'empile pas), 1. Une case sans rien qui ressemble à
+/// un chiffre mais à l'icône éteinte est l'emplacement vide d'un onglet spécial (silhouette
+/// grisée de l'objet attendu) : pas d'objet. Une case à chiffres illisibles reste inconnue.
+pub fn slot_quantity(img: &RgbImage, slot: &Rect, side: u32) -> Option<u32> {
+    if let Some(q) = read_quantity(img, slot, side) {
+        return Some(q);
+    }
+    let square = slot.w.abs_diff(side) <= side / 8 && slot.h.abs_diff(side) <= side / 8;
+    // Rien à taille de chiffre dans toute la bande du haut : un nombre à moitié masqué (curseur,
+    // infobulle) en laisse souvent un morceau, et 1 serait alors faux.
+    let blank = [false, true].into_iter().all(|d| digit_parts(img, slot, side, d, false).is_empty())
+        && !has_glyphs(img, slot, side, true);
+    (square && blank && is_lit(img, slot)).then_some(1)
+}
+
+/// Icône bien éclairée : au moins 2 % de pixels vifs (une silhouette grisée plafonne vers 60).
+fn is_lit(img: &RgbImage, slot: &Rect) -> bool {
+    let (x1, y1) = ((slot.x + slot.w).min(img.width()), (slot.y + slot.h).min(img.height()));
+    let total = (x1.saturating_sub(slot.x) * y1.saturating_sub(slot.y)).max(1);
+    let bright = (slot.y..y1)
+        .flat_map(|y| (slot.x..x1).map(move |x| (x, y)))
+        .filter(|&(x, y)| img.get_pixel(x, y).0.into_iter().max().unwrap_or(0) >= 150)
+        .count() as u32;
+    bright * 50 >= total
+}
+
+fn read_quantity_at(img: &RgbImage, slot: &Rect, side: u32, bottom: bool) -> Option<u32> {
     // Chiffres reconnus jusqu'au premier glyphe inconnu (souvent un reflet de l'icône collé
     // derrière la quantité), et si la lecture est allée jusqu'au bout.
     let read = |diagonal| -> (usize, bool, Option<u32>) {
-        let glyphs = quantity_glyphs(img, slot, side, diagonal);
+        let glyphs = quantity_glyphs_at(img, slot, side, diagonal, bottom);
         let digits: String = glyphs.iter().map_while(classify).collect();
         let n = digits.len();
         // « 44.9K » : le K suit les chiffres, le point se cache entre deux d'entre eux.
