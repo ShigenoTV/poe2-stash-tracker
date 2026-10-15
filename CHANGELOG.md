@@ -3,7 +3,7 @@
 Chaque version a sa section « ## X.Y.Z (date) » : l'appli l'affiche après la mise à jour
 et la release GitHub la reprend. Ce qui n'est pas encore publié va sous « ## À venir ».
 
-## À venir
+## 0.1.8 (2026-10-15)
 
 - Alertes de prix regroupées derrière une cloche dans la barre du haut, avec leur nombre : la liste s'ouvre au clic au lieu de recouvrir l'appli.
 - Notes de version dans l'appli : affichées une fois après chaque mise à jour, et à tout moment en cliquant sur le numéro de version.
