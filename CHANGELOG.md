@@ -6,6 +6,7 @@ et la release GitHub la reprend. Ce qui n'est pas encore publié va sous « ## �
 ## À venir
 
 - Image du jeu plus claire que d'habitude (HDR de Windows, luminosité relevée) : l'appli la ramène à la normale avant de reconnaître les objets et de lire les nombres. Avant, presque tout l'onglet Currency sortait « Objet non identifié » et des objets mal reconnus gonflaient la valeur (210 div en Abyss).
+- Onglet nommé d'après son type de coffre (Currency, Essence…), ou à défaut d'après les objets qu'il contient, jamais d'après le nom que tu lui as donné (« Craft », « Orbe »…).
 - Un avertissement « Image très claire (HDR ?) » s'affiche à côté du scan dans ce cas : désactiver le HDR pour le jeu reste le plus fiable.
 
 ## 0.1.8 (2026-10-15)

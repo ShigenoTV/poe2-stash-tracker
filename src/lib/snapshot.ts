@@ -92,26 +92,13 @@ export function revalue(snapshot: Snapshot, prices: PriceFile): Snapshot {
 }
 
 /**
- * Nom lu en jeu, complété quand c'est l'abréviation d'une catégorie : « brea » → « Breach »,
- * « cur » → « Currency », « Socketables » → « Socketable ». Les autres noms restent tels quels.
- */
-export function expandTabName(name: string): string {
-  const key = name.trim().toLowerCase().replace(/s$/, "");
-  if (key.length >= 3) {
-    const label = Object.values(CATEGORY_LABEL).find((l) => l.toLowerCase().startsWith(key));
-    if (label) return label;
-  }
-  return name.trim();
-}
-
-/**
- * Nomme chaque onglet scanné : type d'onglet spécial reconnu à sa disposition, sinon nom lu en
- * jeu, sinon la catégorie la plus représentée parmi ses objets reconnus, sinon « Onglet N ».
+ * Nomme chaque onglet scanné : type d'onglet spécial reconnu à sa disposition, sinon la
+ * catégorie la plus représentée parmi ses objets reconnus, sinon « Onglet N ». Le nom donné par
+ * le joueur (« Craft », « Orbe »…) ne dit rien du contenu : il n'est pas utilisé (Max, 2026-10-15).
  */
 function nameTabs(scans: ScanResult[], byId: Map<string, PriceFile["items"][number]>): string[] {
   return scans.map((scan, tab) => {
     if (scan.stashType) return scan.stashType;
-    if (scan.tabName) return expandTabName(scan.tabName);
     const counts = new Map<Category, number>();
     for (const slot of scan.slots) {
       const chosen = chosenItem(slot);
