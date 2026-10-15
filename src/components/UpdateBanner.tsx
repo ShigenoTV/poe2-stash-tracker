@@ -30,12 +30,16 @@ const STATE_LABEL = {
 } as const;
 
 /** Bouton « Rechercher une mise à jour » et numéro de version, dans la barre d'onglets. */
-export function UpdateCheck({ updater }: { updater: Updater }) {
+export function UpdateCheck({ updater, onShowNotes }: { updater: Updater; onShowNotes: () => void }) {
   const { version, state, error, check } = updater;
   const label = STATE_LABEL[state];
   return (
     <div className="update-check">
-      {version && <span className="muted">v{version}</span>}
+      {version && (
+        <button type="button" className="version-link" title="Notes de version" onClick={onShowNotes}>
+          v{version}
+        </button>
+      )}
       {label && (
         <span className={state === "error" ? "update-error" : "muted"} title={error ?? undefined}>
           {label}

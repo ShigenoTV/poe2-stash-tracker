@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CurrencySelect } from "./components/CurrencySelect";
 import { CategorySidebar, type CategoryFilter } from "./components/CategorySidebar";
-import { AlertsBanner } from "./components/AlertsBanner";
+import { AlertsBell } from "./components/AlertsBell";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { ItemGrid } from "./components/ItemGrid";
 import { NetWorthChart } from "./components/NetWorthChart";
@@ -25,6 +25,8 @@ import {
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { SnapshotHeader } from "./components/SnapshotHeader";
+import { WhatsNew } from "./components/WhatsNew";
+import { CHANGELOG, loadSeenVersion, notesSince, saveSeenVersion, type ReleaseNotes } from "./lib/changelog";
 import { UpdateBanner, UpdateCheck } from "./components/UpdateBanner";
 import { useUpdater } from "./lib/useUpdater";
 import { useStashScanner } from "./lib/useStashScanner";
@@ -70,6 +72,17 @@ export default function App() {
     if (snapshot && !session) setSession({ startedAt: Date.now(), holdings: holdingsOf(snapshot) });
   }, [snapshot, session]);
   const updater = useUpdater();
+  // Notes de version : montrées une fois après chaque mise à jour, puis via le numéro de version.
+  const [notes, setNotes] = useState<{ title: string; releases: ReleaseNotes[] } | null>(null);
+  useEffect(() => {
+    const current = updater.version;
+    if (!current) return;
+    const seen = loadSeenVersion();
+    if (seen === current) return;
+    saveSeenVersion(current);
+    const fresh = notesSince(CHANGELOG, seen, current);
+    if (fresh.length > 0) setNotes({ title: "Quoi de neuf", releases: fresh });
+  }, [updater.version]);
   const scanner = useStashScanner(onSnapshot);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editing, setEditing] = useState<SnapshotItem | null>(null);
@@ -179,21 +192,22 @@ export default function App() {
   return (
     <div className="app">
       <UpdateBanner updater={updater} />
-      <AlertsBanner
-        alerts={alerts}
-        onDismiss={(key) => setAlerts((cur) => (key === null ? [] : cur.filter((a) => a.key !== key)))}
-      />
       <nav className="topbar">
         <ScanControl scanner={scanner} />
         <div className="topbar-right">
+          <AlertsBell
+            alerts={alerts}
+            onDismiss={(key) => setAlerts((cur) => (key === null ? [] : cur.filter((a) => a.key !== key)))}
+          />
           <PricesControl scanner={scanner} />
-          <UpdateCheck updater={updater} />
+          <UpdateCheck updater={updater} onShowNotes={() => setNotes({ title: "Notes de version", releases: CHANGELOG })} />
           <CurrencySelect value={currency} onChange={pickCurrency} chaosAvailable={!!rates.chaosPerDivine} />
           <button type="button" className="ghost" onClick={() => setSettingsOpen((o) => !o)}>
             Réglages
           </button>
         </div>
       </nav>
+      {notes && <WhatsNew title={notes.title} releases={notes.releases} onClose={() => setNotes(null)} />}
       {settingsOpen && (
         <SettingsPanel
           scanner={scanner}

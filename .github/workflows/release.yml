@@ -24,6 +24,8 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - id: notes
+        run: node scripts/release-notes.mjs
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -32,7 +34,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: PoE2 Stash Tracker v__VERSION__
-          releaseBody: Voir les commits depuis la version précédente.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

@@ -263,17 +263,42 @@ button { font: inherit; color: inherit; }
 .list-toolbar .ghost.active { border-color: var(--accent); color: var(--accent); }
 .list-toolbar-status { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.alerts {
-  display: flex; align-items: flex-start; gap: 12px; padding: 8px 20px;
-  background: var(--panel-2); border-bottom: 1px solid var(--border);
+.alerts-bell { position: relative; }
+.alerts-toggle {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer;
 }
-.alerts ul { flex: 1; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.alerts li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.alerts img { width: 22px; height: 22px; object-fit: contain; }
-.alerts .ghost { font-size: 12px; }
+.alerts-toggle:hover, .alerts-toggle.active { border-color: var(--accent); }
+.alerts-count { font-weight: 600; color: var(--accent); }
+.alerts-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 480px; max-height: 60vh;
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 32px #000a;
+}
+.alerts-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600;
+}
+.alerts-head .ghost { font-size: 12px; font-weight: 400; }
+.alerts-menu ul { list-style: none; margin: 0; padding: 6px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.alerts-menu li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.alerts-menu img { width: 22px; height: 22px; object-fit: contain; }
 .alert-up .alert-arrow { color: #7fc48f; }
 .alert-down .alert-arrow { color: #e8907c; }
+.alerts-toggle .alert-up, .alerts-toggle .alert-down { display: flex; gap: 2px; color: var(--muted); }
 .alert-text { flex: 1; }
 .alert-close { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
 .alert-close:hover { color: var(--text); }
 .settings-check { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.whatsnew-backdrop { position: fixed; inset: 0; z-index: 30; background: #0008; display: flex; align-items: center; justify-content: center; }
+.whatsnew {
+  width: min(560px, calc(100vw - 32px)); max-height: 75vh; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 32px #000a;
+}
+.whatsnew-body { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.whatsnew h3 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+.whatsnew h3 .muted { font-weight: 400; }
+.whatsnew ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.4; }
+.update-check .version-link { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; font-size: 12px; text-decoration: underline dotted; }
+.update-check .version-link:hover { border: 0; color: var(--text); }
