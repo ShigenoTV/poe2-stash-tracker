@@ -9,6 +9,7 @@ use crate::vision::{self, Rect};
 use base64::Engine;
 use image::{imageops, RgbImage, RgbaImage};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::io::Cursor;
 use std::sync::Mutex;
 
@@ -72,6 +73,8 @@ pub struct ScanResult {
     pub tab_name: Option<String>,
     /// Type d'onglet spécial reconnu à sa disposition (« Breach »…), `None` pour un onglet ordinaire.
     pub stash_type: Option<String>,
+    /// Éclaircissement de la capture par rapport au réglage habituel du jeu (1 = normal).
+    pub brightness: f32,
 }
 
 fn png_base64(img: &RgbImage) -> Result<String, String> {
@@ -93,30 +96,39 @@ fn crop_captured(rgba: &RgbaImage, region: Option<Region>) -> Result<RgbImage, S
 
 pub fn scan_image(img: &RgbImage) -> Result<ScanResult, String> {
     let mut slots = vision::find_filled_slots(img);
+    let gain = vision::brightness_gain(img, &slots);
+    // Capture éclaircie (luminosité du jeu, HDR) : icônes et chiffres lus sur des copies
+    // ramenées à la luminosité habituelle. Les cases, elles, se repèrent aussi bien telles quelles.
+    let (icons_img, digits_img) = if gain >= vision::BRIGHT_GAIN {
+        (Cow::Owned(vision::darken(img, gain)), Cow::Owned(vision::darken_keeping_white(img, gain)))
+    } else {
+        (Cow::Borrowed(img), Cow::Borrowed(img))
+    };
     let side = vision::slot_side(&slots);
     if let Some(side) = side {
-        slots.extend(vision::hidden_slots(img, &slots, side));
+        slots.extend(vision::hidden_slots(&digits_img, &slots, side));
         slots.sort_by_key(|r| (r.y / (side / 2).max(1), r.x));
     }
     let scanned = slots
         .iter()
         .map(|s: &Rect| {
             let icon = imageops::crop_imm(img, s.x, s.y, s.w, s.h).to_image();
+            let normal = imageops::crop_imm(icons_img.as_ref(), s.x, s.y, s.w, s.h).to_image();
             Ok(ScannedSlot {
                 x: s.x,
                 y: s.y,
                 w: s.w,
                 h: s.h,
-                quantity: side.and_then(|side| vision::slot_quantity(img, s, side)),
-                tier: side.map_or(0, |side| vision::tier_mark(img, s, side)),
-                descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&icon).0),
+                quantity: side.and_then(|side| vision::slot_quantity(&digits_img, s, side)),
+                tier: side.map_or(0, |side| vision::tier_mark(&digits_img, s, side)),
+                descriptor: base64::engine::general_purpose::STANDARD.encode(icons::describe_slot(&normal).0),
                 icon_png_base64: None,
                 icon,
                 identification: None,
             })
         })
         .collect::<Result<_, String>>()?;
-    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None, stash_type: None })
+    Ok(ScanResult { slot_side: side, slots: scanned, identify_error: None, tab_name: None, stash_type: None, brightness: gain })
 }
 
 /// Captures supplémentaires prises après l'image stable : chaque case doit être vue sur la
@@ -226,6 +238,14 @@ async fn identify_all(
     Ok(())
 }
 
+fn darken_rgba(mut img: RgbaImage, gain: f32) -> RgbaImage {
+    for p in img.pixels_mut() {
+        let [r, g, b, a] = p.0;
+        p.0 = [vision::darken_channel(r, gain), vision::darken_channel(g, gain), vision::darken_channel(b, gain), a];
+    }
+    img
+}
+
 /// Vignette grise de la zone, pour détecter un changement d'onglet à moindre coût.
 fn thumbnail(img: &RgbImage) -> Vec<u8> {
     let gray = image::DynamicImage::ImageRgb8(img.clone()).to_luma8();
@@ -321,7 +341,10 @@ pub async fn auto_scan(
     }
     let mut scan = merge_frames(frames);
     identify_all(&app, &library, &mut scan).await?;
+    let gain = scan.brightness;
     (scan.stash_type, scan.tab_name) = tauri::async_runtime::spawn_blocking(move || {
+        // Disposition et rangée d'onglets sont reconnues à leurs couleurs habituelles.
+        let screen = if gain >= vision::BRIGHT_GAIN { darken_rgba(screen, gain) } else { screen };
         (stashtype::detect(&screen).map(String::from), tabname::read(&screen))
     })
     .await
@@ -375,6 +398,36 @@ mod tests {
             let scan = scan_image(&fixture(name)).unwrap();
             let read: Vec<String> = scan.slots.iter().map(|s| s.quantity.map_or("-".into(), |q| q.to_string())).collect();
             assert_eq!(read.join(" "), want, "{name}");
+        }
+    }
+
+    /// Onglet Currency de Max avec le HDR de Windows (ligue Forbidden Rites) : capture ×1,9 plus
+    /// claire. Sans correction, presque aucune icône n'était reconnue et les reflets clairs
+    /// faussaient les nombres (303 lu 30, 714 et 446 illisibles). Le 13 sur l'icône blanche de
+    /// l'Orb of Annulment, collée au chiffre une fois saturée, reste lu 19.
+    #[test]
+    fn reads_brightened_capture() {
+        let scan = scan_image(&fixture("stash-currency-hdr-1440.png")).unwrap();
+        assert!(scan.brightness >= vision::BRIGHT_GAIN, "{}", scan.brightness);
+        let read: Vec<String> = scan.slots.iter().map(|s| s.quantity.map_or("-".into(), |q| q.to_string())).collect();
+        let want = "731 434 33 418 303 19 397 11 5 638 714 37 1 2 99 974 52 8 1 229 84 446 83 - 10 120 113 6 1 662 3 5 3 1 53 1 2 11 2 1 1";
+        assert_eq!(read.join(" "), want);
+        let tiers: Vec<u8> = scan.slots.iter().take(3).map(|s| s.tier).collect();
+        assert_eq!(tiers, [0, 2, 3]);
+
+        let icon = |name: &str| {
+            let path = format!("{}/tests/fixtures/icons/{name}.png", env!("CARGO_MANIFEST_DIR"));
+            icons::describe_reference(&image::open(path).unwrap().to_rgba8())
+        };
+        let descriptor = |x: u32, y: u32| {
+            let slot = scan.slots.iter().find(|s| s.x.abs_diff(x) <= 4 && s.y.abs_diff(y) <= 4).expect("case trouvée");
+            icons::Descriptor(base64::engine::general_purpose::STANDARD.decode(&slot.descriptor).unwrap())
+        };
+        // Transmutation (lue comme une rune), Lesser Jeweller's Orb (lue comme Ulaman's Gaze, 30 div).
+        for ((x, y), right, wrong) in [((27, 39), "transmute", "greater-iron-rune"), ((585, 39), "lesser-jewellers-orb", "ulamans-gaze")] {
+            let d = descriptor(x, y);
+            let (dr, dw) = (icons::distance(&d, &icon(right), true), icons::distance(&d, &icon(wrong), true));
+            assert!(dr < 0.07 && dr < dw, "({x},{y}) : {right} {dr:.3} / {wrong} {dw:.3}");
         }
     }
 
@@ -458,7 +511,7 @@ mod tests {
     }
 
     fn frame(slots: Vec<ScannedSlot>) -> ScanResult {
-        ScanResult { slot_side: Some(60), slots, identify_error: None, tab_name: None, stash_type: None }
+        ScanResult { slot_side: Some(60), slots, identify_error: None, tab_name: None, stash_type: None, brightness: 1.0 }
     }
 
     #[test]

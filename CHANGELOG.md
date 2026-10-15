@@ -3,6 +3,11 @@
 Chaque version a sa section « ## X.Y.Z (date) » : l'appli l'affiche après la mise à jour
 et la release GitHub la reprend. Ce qui n'est pas encore publié va sous « ## À venir ».
 
+## À venir
+
+- Image du jeu plus claire que d'habitude (HDR de Windows, luminosité relevée) : l'appli la ramène à la normale avant de reconnaître les objets et de lire les nombres. Avant, presque tout l'onglet Currency sortait « Objet non identifié » et des objets mal reconnus gonflaient la valeur (210 div en Abyss).
+- Un avertissement « Image très claire (HDR ?) » s'affiche à côté du scan dans ce cas : désactiver le HDR pour le jeu reste le plus fiable.
+
 ## 0.1.8 (2026-10-15)
 
 - Alertes de prix regroupées derrière une cloche dans la barre du haut, avec leur nombre : la liste s'ouvre au clic au lieu de recouvrir l'appli.

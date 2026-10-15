@@ -5,7 +5,7 @@ pub mod icons;
 mod library;
 mod pricing;
 mod ratelimit;
-mod scan;
+pub mod scan;
 pub mod vision;
 mod stash;
 pub mod stashtype;

@@ -54,7 +54,12 @@ export interface ScanResult {
   tabName?: string | null;
   /** Type d'onglet spécial reconnu à sa disposition (« Breach »…). */
   stashType?: string | null;
+  /** Éclaircissement de la capture par rapport au réglage habituel du jeu (1 = normal). */
+  brightness?: number;
 }
+
+/** Au-delà, la capture est bien plus claire que d'habitude (HDR de Windows, luminosité du jeu). */
+export const BRIGHT_CAPTURE = 1.3;
 
 export type AutoScanResult =
   | { status: "unchanged" }

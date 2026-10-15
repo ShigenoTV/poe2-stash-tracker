@@ -51,6 +51,7 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
   const [error, setError] = useState<string | null>(null);
   const [pricesBusy, setPricesBusy] = useState(false);
   const [lastAutoScan, setLastAutoScan] = useState<Date | null>(null);
+  const [brightness, setBrightness] = useState(1);
 
   const setAuto = useCallback((on: boolean) => {
     setAutoState(on);
@@ -145,6 +146,7 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
             setTabs((t) => mergeScan(t, res.scan));
             setStashOpen(true);
             setLastAutoScan(new Date());
+            setBrightness(res.scan.brightness ?? 1);
             if (!res.scan.identifyError) await ensurePrices();
           } else if (res.status === "noStash") {
             setStashOpen(false);
@@ -173,6 +175,7 @@ export function useStashScanner(onSnapshot: (s: Snapshot) => void) {
     error,
     pricesBusy,
     lastAutoScan,
+    brightness,
     setAuto,
     relabel,
     restart,

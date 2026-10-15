@@ -538,6 +538,66 @@ pub fn hidden_slots(img: &RgbImage, slots: &[Rect], side: u32) -> Vec<Rect> {
     found
 }
 
+/// Bleu médian du fond des cases occupées, sur une capture au réglage de luminosité habituel.
+const SLOT_BACKGROUND_BLUE: f32 = 29.0;
+
+/// Facteur d'éclaircissement de la capture : luminosité ou gamma du jeu relevé, HDR de Windows.
+/// Mesuré sur le fond bleu nuit des cases, dont la couleur est fixe : 1 au réglage habituel.
+pub fn brightness_gain(img: &RgbImage, slots: &[Rect]) -> f32 {
+    let mut blues: Vec<u8> = slots
+        .iter()
+        .flat_map(|s| (s.y..(s.y + s.h).min(img.height())).flat_map(move |y| (s.x..(s.x + s.w).min(img.width())).map(move |x| (x, y))))
+        .map(|(x, y)| img.get_pixel(x, y))
+        .filter(|p| is_slot_background(p))
+        .map(|p| p.0[2])
+        .collect();
+    if blues.len() < 200 {
+        return 1.0;
+    }
+    let mid = blues.len() / 2;
+    let (_, median, _) = blues.select_nth_unstable(mid);
+    f32::from(*median) / SLOT_BACKGROUND_BLUE
+}
+
+/// Au-delà, la capture est nettement plus claire qu'au réglage habituel (≈ 1,0–1,07 sur toutes
+/// les captures de Max jusqu'à la ligue Forbidden Rites, 1,9 depuis) : icônes et chiffres sont
+/// lus sur une copie assombrie.
+pub const BRIGHT_GAIN: f32 = 1.3;
+
+/// Canal ramené à la luminosité habituelle.
+pub fn darken_channel(c: u8, gain: f32) -> u8 {
+    (f32::from(c) / gain).round().min(255.0) as u8
+}
+
+/// Capture ramenée à la luminosité habituelle, pour comparer les icônes à celles de poe.ninja.
+pub fn darken(img: &RgbImage, gain: f32) -> RgbImage {
+    let mut out = img.clone();
+    for p in out.pixels_mut() {
+        p.0 = p.0.map(|c| darken_channel(c, gain));
+    }
+    out
+}
+
+/// Copie pour lire chiffres et paliers : assombrie comme `darken`, sauf le blanc saturé. Le texte
+/// des quantités est blanc pur et le reste ; assombri, il ne passerait plus pour de l'encre,
+/// alors que les reflets clairs des icônes, saturés eux aussi par l'éclaircissement mais moins
+/// blancs, retombent sous le seuil de l'encre.
+pub fn darken_keeping_white(img: &RgbImage, gain: f32) -> RgbImage {
+    let mut out = img.clone();
+    for p in out.pixels_mut() {
+        if p.0.into_iter().min().unwrap_or(0) < SATURATED_WHITE {
+            p.0 = p.0.map(|c| darken_channel(c, gain));
+        } else {
+            p.0 = [255; 3];
+        }
+    }
+    out
+}
+
+/// Blanc considéré comme saturé sur une capture éclaircie (réglé sur l'onglet Currency de Max
+/// éclairci ×1,9 : 235 lit un 13 en 16, 252 perd le 3).
+const SATURATED_WHITE: u8 = 245;
+
 /// Taille de case courante (médiane des cases carrées).
 pub fn slot_side(slots: &[Rect]) -> Option<u32> {
     let mut sides: Vec<u32> = slots.iter().filter(|r| r.w.abs_diff(r.h) <= 4).map(|r| r.w.min(r.h)).collect();
