@@ -3,6 +3,10 @@
 Chaque version a sa section « ## X.Y.Z (date) » : l'appli l'affiche après la mise à jour
 et la release GitHub la reprend. Ce qui n'est pas encore publié va sous « ## À venir ».
 
+## À venir
+
+- Sécurité : mise à jour de la vérification des certificats HTTPS (rustls, rustls-webpki, certificats racine) et retrait du module d'extraction zip de la mise à jour automatique (failles graves de la bibliothèque zip ; les mises à jour se téléchargent en .exe/.msi, rien ne change pour toi).
+
 ## 0.1.9 (2026-10-15)
 
 - Image du jeu plus claire que d'habitude (HDR de Windows, luminosité relevée) : l'appli la ramène à la normale avant de reconnaître les objets et de lire les nombres. Avant, presque tout l'onglet Currency sortait « Objet non identifié » et des objets mal reconnus gonflaient la valeur (210 div en Abyss).
