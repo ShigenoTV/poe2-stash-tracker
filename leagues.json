@@ -1,0 +1,40 @@
+{
+  "updatedAt": "2026-10-31T18:36:30.460Z",
+  "leagues": [
+    {
+      "id": "Forbidden Rites",
+      "name": "Forbidden Rites",
+      "slug": "forbidden-rites",
+      "fetchedAt": "2026-10-31T18:33:06.675Z",
+      "count": 663
+    },
+    {
+      "id": "Runes of Aldur",
+      "name": "Runes of Aldur",
+      "slug": "runes-of-aldur",
+      "fetchedAt": "2026-10-31T18:33:30.264Z",
+      "count": 653
+    },
+    {
+      "id": "HC Forbidden Rites",
+      "name": "HC Forbidden Rites",
+      "slug": "hc-forbidden-rites",
+      "fetchedAt": "2026-10-31T18:34:01.130Z",
+      "count": 594
+    },
+    {
+      "id": "HC Runes of Aldur",
+      "name": "HC Runes of Aldur",
+      "slug": "hc-runes-of-aldur",
+      "fetchedAt": "2026-10-31T18:34:29.943Z",
+      "count": 42
+    },
+    {
+      "id": "Standard",
+      "name": "Standard",
+      "slug": "standard",
+      "fetchedAt": "2026-10-31T18:34:59.338Z",
+      "count": 617
+    }
+  ]
+}
